@@ -6,10 +6,10 @@ Git·이슈·PR 절차는 [기여 가이드](../CONTRIBUTING.md)에서 관리한
 
 ## 패키지 구조
 
-`com.hsu.oneclickme` 아래에 `domain`과 `global`을 둔다. `domain`은 업무별 기능을 묶는 패키지이며 `member`, `place` 등을 하위에 둔다.
+`com.hsu.oneclickmeet` 아래에 `domain`과 `global`을 둔다. `domain`은 업무별 기능을 묶는 패키지이며 `member`, `place` 등을 하위에 둔다.
 
 ```text
-com.hsu.oneclickme
+com.hsu.oneclickmeet
 ├── OneclickmeApplication
 ├── domain
 │   ├── member
