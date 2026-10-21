@@ -8,9 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
-
     services:
       mysql:
         image: mysql:8.4
