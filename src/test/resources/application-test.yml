@@ -12,4 +12,4 @@ spring:
       hibernate:
         format_sql: true
   config:
-    import: "file:./.env.local[.properties]"
+    import: "optional:file:./.env.local[.properties]"
