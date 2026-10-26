@@ -42,8 +42,8 @@
 |                                                      이재원                                                       |                                                       백승진                                                       |
 |:--------------------------------------------------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------:|
 | <img src="https://avatars.githubusercontent.com/u/50106190?v=4" width="150" height="150" alt="이재원 GitHub 프로필"> | <img src="https://avatars.githubusercontent.com/u/189280291?v=4" width="150" height="150" alt="백승진 GitHub 프로필"> |
-|                                              PL · Backend · Infra                                              |                                                    Backend                                                      |
-|                                  [jwon0523](https://github.com/jwon0523)                                   |                                     [SeungJeans](https://github.com/SeungJeans)                                    |
+|                                              Backend Lead · Infra                                              |                                                    Backend                                                      |
+|                                    [jwon0523](https://github.com/jwon0523)                                     |                                     [SeungJeans](https://github.com/SeungJeans)                                    |
 
 서버의 모든 변경은 PR로 남기고 `main`에 Squash merge합니다. 합의한 API·도메인 계약 안에서 담당 영역의 독립적인 내부 변경은 검증과 필수 CI 통과 후 담당자가 직접 머지할 수 있습니다. 도메인별 엔티티·DTO도 해당 담당자가 책임집니다.
 
@@ -51,21 +51,21 @@
 
 ## 3. 시스템 구조와 기술 스택
 
-목표 시스템은 모바일 앱, Spring Boot 서버, MySQL로 구성합니다.
+목표 시스템은 모바일 앱, Spring Boot 서버(BFF), FastAPI AI 서버, MySQL로 구성합니다. Spring Boot는 모바일 앱의 요청을 받아 데이터를 조회·저장하고, AI 처리가 필요한 요청은 FastAPI 서버로 전달한 뒤 결과를 앱에 반환하는 BFF(Backend for Frontend) 역할을 맡습니다.
 
 ```text
 모바일 앱
    │
    │ HTTP API — 구현 예정
    ▼
-Spring Boot 서버
+Spring Boot 서버 (BFF)
    │
-   │ 데이터 조회·저장 — 기능별 구현 예정
-   ▼
-MySQL
+   ├── 데이터 조회·저장 — 기능별 구현 예정 ──▶ MySQL
+   │
+   └── AI 처리 요청·결과 수신 — 연동 구현 예정 ──▶ FastAPI AI 서버
 ```
 
-현재 저장소에는 Spring Boot 애플리케이션 진입점, 로컬 MySQL 실행 설정, datasource 설정이 있습니다. 회원·장소·코스 등의 도메인 코드와 API는 아직 포함되어 있지 않습니다.
+현재 저장소에는 Spring Boot 애플리케이션 진입점, 로컬 MySQL 실행 설정, datasource 설정이 있습니다. 회원·장소·코스 등의 도메인 코드와 API, FastAPI 연동 코드는 아직 포함되어 있지 않습니다.
 
 ### 기술 스택
 
