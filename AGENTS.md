@@ -38,7 +38,11 @@ Recent history includes `chore: 개발 컨벤션 및 GitHub 협업 템플릿 추
 
 Follow GitHub Flow: branch from `main` using `type/issue-number`, such as `feat/12`. Target `main`, use the PR template, link issues, and record verification. PR titles use tags without emojis, for example `[Feat] 로그인 API 제작`; preserve that title in the final Squash commit.
 
-Require one other developer's approval. Automatic approval dismissal is disabled by convention; CODEOWNERS is not used.
+All changes must go through a PR and pass required CI before Squash merge. Use [.github/CODEOWNERS](.github/CODEOWNERS) for domain ownership and review routing. Owners may merge isolated internal changes within agreed API and domain contracts without another approval and remain responsible for the result. Domain entities and DTOs remain owned by their domain implementer; their file type alone does not require joint review.
+
+Changes to another owner's area, jointly reviewed code or infrastructure, SQL, agreed contracts, or behavior affecting other areas require an affected backend developer's approval other than the author's. `global/entity` and its tests are owned by jwon0523 and excluded from path-based joint approval; the owner shares changes or requests additional review when needed. Request review when the impact or ownership is unclear. File ownership alone does not prove that a change is isolated. Automatic approval dismissal remains disabled; request a new review if the approved contract or impact changes. CODEOWNERS does not itself enforce this author-aware policy. GitHub protection settings are reviewed and applied separately; do not bypass existing protections when they differ from the documented policy.
+
+Describe cross-domain impact and review points freely in the PR body, and request review from affected owners when needed. Use GitHub's native required Code Owner review rule together with PR and `Build and Test` requirements. Do not assume owner-authored exemptions have been verified until checked in an actual PR. Do not activate or change GitHub rulesets without explicit user authorization.
 
 ## Configuration Status
 
