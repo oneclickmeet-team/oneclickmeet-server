@@ -1,0 +1,74 @@
+# 원클릭밋 서버 코드 소유자
+# 이재원: @jwon0523 / 백승진: @SeungJeans
+#
+# 운영 방향: 모든 변경은 PR로 남긴다. 초기 데이터 모델과 도메인 간 계약을
+# 함께 검토한 뒤, 다른 영역에 영향 없는 내부 변경부터 담당자가 직접 머지한다.
+# 소유한 경로 안의 변경도 API·권한·삭제·공유 정책 등 다른 영역에 영향을 주면
+# 관련 담당자에게 리뷰를 요청한다. CODEOWNERS는 이러한 영향을 판별하지 않는다.
+#
+# 이 파일은 대상 브랜치에 반영된 후 경로별 리뷰 요청에 사용된다.
+# 승인 강제는 별도의 브랜치 보호 또는 ruleset 설정이 필요하다.
+# 공동 지정은 두 사람 모두의 승인이나 작성자 외 승인을 자동 보장하지 않는다.
+# 기존 1인 승인 규칙과 GitHub 보호 설정은 이 파일 추가만으로 바뀌지 않는다.
+# 마지막으로 일치하는 규칙이 적용되므로 공동 검토 예외는 아래에 둔다.
+
+# 아직 담당 경로가 정해지지 않은 파일은 두 사람이 확인한다.
+* @jwon0523 @SeungJeans
+
+# 재원: 코스·커플 관계·비공개 메모·공동 첨언과 해당 테스트.
+# 아래 도메인 경로는 앞으로 추가될 패키지에도 적용된다.
+/src/main/java/com/hsu/oneclickmeet/domain/course/ @jwon0523
+/src/main/java/com/hsu/oneclickmeet/domain/couple/ @jwon0523
+/src/main/java/com/hsu/oneclickmeet/domain/memo/ @jwon0523
+/src/main/java/com/hsu/oneclickmeet/domain/comment/ @jwon0523
+/src/test/java/com/hsu/oneclickmeet/domain/course/ @jwon0523
+/src/test/java/com/hsu/oneclickmeet/domain/couple/ @jwon0523
+/src/test/java/com/hsu/oneclickmeet/domain/memo/ @jwon0523
+/src/test/java/com/hsu/oneclickmeet/domain/comment/ @jwon0523
+
+# 승진: 회원·인증, 장소, Spring의 외부 AI 연동, 활동 기록·알림과 해당 테스트.
+# recommendation은 Spring의 입력 검증·AI 호출·결과 처리 범위이며,
+# 별도 AI 저장소의 OCR·추천 알고리즘 구현 담당을 지정하는 규칙이 아니다.
+/src/main/java/com/hsu/oneclickmeet/domain/member/ @SeungJeans
+/src/main/java/com/hsu/oneclickmeet/domain/place/ @SeungJeans
+/src/main/java/com/hsu/oneclickmeet/domain/recommendation/ @SeungJeans
+/src/main/java/com/hsu/oneclickmeet/domain/activity/ @SeungJeans
+/src/main/java/com/hsu/oneclickmeet/domain/notification/ @SeungJeans
+/src/test/java/com/hsu/oneclickmeet/domain/member/ @SeungJeans
+/src/test/java/com/hsu/oneclickmeet/domain/place/ @SeungJeans
+/src/test/java/com/hsu/oneclickmeet/domain/recommendation/ @SeungJeans
+/src/test/java/com/hsu/oneclickmeet/domain/activity/ @SeungJeans
+/src/test/java/com/hsu/oneclickmeet/domain/notification/ @SeungJeans
+
+# 재원: 공통 실행 기반·CI·인프라. 각 기능의 구현·수정 책임은 도메인 담당자에게 있다.
+/src/main/java/com/hsu/oneclickmeet/global/ @jwon0523
+/src/test/java/com/hsu/oneclickmeet/global/ @jwon0523
+/src/main/java/com/hsu/oneclickmeet/global/entity/ @jwon0523
+/src/main/java/com/hsu/oneclickmeet/OneclickmeApplication.java @jwon0523
+/src/test/java/com/hsu/oneclickmeet/OneclickmeApplicationTests.java @jwon0523
+/src/main/resources/ @jwon0523
+/src/test/resources/ @jwon0523
+/build.gradle @jwon0523
+/settings.gradle @jwon0523
+/gradle.properties @jwon0523
+/gradle/ @jwon0523
+/gradlew @jwon0523
+/gradlew.bat @jwon0523
+/Dockerfile* @jwon0523
+/.dockerignore @jwon0523
+/compose*.yaml @jwon0523
+/compose*.yml @jwon0523
+/.env.example @jwon0523
+/.github/workflows/ @jwon0523
+
+# 초기 공동 검토: 데이터 모델·요청/응답 계약·SQL.
+# 공동 검토자를 지정하는 예외이며, 위의 도메인 구현 담당을 바꾸지 않는다.
+# 초기 합의 후 내부 변경의 직접 머지 범위를 넓힐 때 이 예외도 함께 조정한다.
+# 클래스 내부 변경과 계약 변경을 경로만으로 구분할 수는 없다.
+*.sql @jwon0523 @SeungJeans
+
+# 엔티티 관련 작업은 백엔드 리드의 검토를 받는다.
+/src/main/java/com/hsu/oneclickmeet/domain/*/entity/ @jwon0523
+
+# 소유권 규칙 변경은 두 사람에게 리뷰를 요청한다.
+/.github/CODEOWNERS @jwon0523 @SeungJeans
