@@ -3,8 +3,8 @@
 ✅ PR 올리기 전 체크리스트
 
 1. PR의 base branch가 main인지 확인해주세요.
-2. PR 제목에는 이모지와 태그를 사용해주세요. 예: ✨ [Feat] 로그인 API 제작
-   - ✨ [Feat], 🐛 [Fix], 🧹 [Chore], 📝 [Docs], ♻️ [Refactor]
+2. PR 제목에는 태그를 사용하고 이모지는 사용하지 말아주세요. 예: [Feat] 로그인 API 제작
+   - [Feat], [Fix], [Chore], [Docs], [Refactor]
    - PR 제목은 최종 Squash 커밋 제목에도 사용합니다.
 3. 작성자를 제외한 서버 개발자 1명을 리뷰어로 지정하고, Approve를 받은 후 Squash merge 해주세요.
 4. 연관된 이슈를 연결하고, 작성에 사용한 안내 주석은 제거해주세요.

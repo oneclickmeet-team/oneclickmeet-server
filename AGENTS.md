@@ -36,7 +36,7 @@ Use JUnit Jupiter and Spring Boot testing support. Follow the existing `*Tests` 
 
 Recent history includes `chore: 개발 컨벤션 및 GitHub 협업 템플릿 추가`. Use `feat`, `fix`, `chore`, `docs`, or `refactor` commits without emojis.
 
-Follow GitHub Flow: branch from `main` using `type/issue-number`, such as `feat/12`. Target `main`, use the PR template, link issues, and record verification. PR titles include emojis, for example `✨ [Feat] 로그인 API 제작`; preserve that title in the final Squash commit.
+Follow GitHub Flow: branch from `main` using `type/issue-number`, such as `feat/12`. Target `main`, use the PR template, link issues, and record verification. PR titles use tags without emojis, for example `[Feat] 로그인 API 제작`; preserve that title in the final Squash commit.
 
 Require one other developer's approval. Automatic approval dismissal is disabled by convention; CODEOWNERS is not used.
 
