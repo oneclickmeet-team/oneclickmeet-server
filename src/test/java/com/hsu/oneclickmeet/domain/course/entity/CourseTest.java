@@ -27,11 +27,11 @@ class CourseTest {
 		em.flush();
 		em.clear();
 
-		Course findCourse = em.find(Course.class, savedId);
+		Course foundCourse = em.find(Course.class, savedId);
 
-		assertThat(findCourse).isNotNull();
-		assertThat(findCourse.getId()).isEqualTo(savedId);
-		assertThat(findCourse.getTitle()).isEqualTo("연남 데이트 코스");
-		assertThat(course).isNotSameAs(findCourse);
+		assertThat(foundCourse).isNotNull();
+		assertThat(foundCourse.getId()).isEqualTo(savedId);
+		assertThat(foundCourse.getName()).isEqualTo("연남 데이트 코스");
+		assertThat(course).isNotSameAs(foundCourse);
 	}
 }

@@ -25,16 +25,26 @@ public class CoursePlace extends BaseEntity {
 
 	@Id
 	@GeneratedValue
-	@Column(name = "course_place_id")
+	@Column(name = "place_id")
 	private Long id;
 
-	@Column(nullable = false)
-	private String title;
+	@Column(name = "place_name", nullable = false)
+	private String name;
 
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "course_id")
-	private Course course;
+    @Column(name = "place_memo")
+    private String memo;
 
-	@OneToMany(mappedBy = "coursePlace")
-	private List<CoursePlaceItem> coursePlaceItems = new ArrayList<>();
+    //TODO: 방문 순서는 어떻게 나타내야 할까..
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_id")
+    private Course course;
+
+	@OneToMany(mappedBy = "place")
+	private List<CoursePlaceMenu> menuList = new ArrayList<>();
+
+    //=== Constroctor ===
+
+
+    //=== Domin Method ===
 }

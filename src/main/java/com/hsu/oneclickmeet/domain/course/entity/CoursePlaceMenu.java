@@ -17,20 +17,28 @@ import lombok.NoArgsConstructor;
 @Getter
 @Table(name = "course_place_item")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class CoursePlaceItem extends BaseEntity {
+public class CoursePlaceMenu extends BaseEntity {
 
 	@Id
 	@GeneratedValue
-	@Column(name = "course_place_item")
+	@Column(name = "menu_id")
 	private Long id;
 
-	@Column(nullable = false)
+	@Column(name = "menu_name", nullable = false)
 	private String name;
 
-	@Column(nullable = false)
+	@Column(name = "price_name", nullable = false)
 	private String price;
 
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "course_place_id")
-	private CoursePlace coursePlace;
+	@JoinColumn(name = "place_id")
+	private CoursePlace place;
+
+    @Column(name = "menu_selected", nullable = false)
+    private Boolean selected;
+
+    //=== Constroctor ===
+
+
+    //=== Domin Method ===
 }

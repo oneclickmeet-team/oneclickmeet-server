@@ -30,4 +30,9 @@ public class CourseLibrary extends BaseEntity {
 	@JoinColumn(name = "course_id")
 	private Course course;
 
+    //=== Constroctor ===
+
+
+    //=== Domin Method ===
+
 }
