@@ -26,7 +26,7 @@ Match existing indentation: tabs in Java/Gradle and two spaces in YAML. No forma
 
 Use `PascalCase` classes, `camelCase` methods/fields, and `UPPER_SNAKE_CASE` constants. Name roles explicitly, such as `PlaceService` and `CreatePlaceRequest`.
 
-Use records for DTOs and ordinary `@Entity` classes with necessary getters and protected no-argument constructors. Do not use Lombok `@Data` or class-wide entity setters. Prefer constructor injection with `private final` dependencies. Return response DTOs directly; use `ProblemDetail` with codes such as `COMMON-0400` for errors.
+Use records for DTOs and ordinary `@Entity` classes with necessary getters and protected no-argument constructors. Do not use Lombok `@Data` or class-wide entity setters. Prefer constructor injection with `private final` dependencies. Return JSON responses in the common `success`/`data`/`error` envelope defined in `docs/conventions.md`.
 
 ## Testing Guidelines
 
