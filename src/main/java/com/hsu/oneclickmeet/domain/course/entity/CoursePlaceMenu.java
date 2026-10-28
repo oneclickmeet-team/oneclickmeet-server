@@ -31,6 +31,9 @@ public class CoursePlaceMenu extends BaseEntity {
 	@Column(name = "price", nullable = false)
 	private Integer price;
 
+    @Column(name = "menu_order", nullable = false)
+    private Integer position;
+
     @Column(name = "menu_selected", nullable = false)
     private Boolean selected;
 
@@ -42,19 +45,21 @@ public class CoursePlaceMenu extends BaseEntity {
     //=== Constroctor ===
 
     @Builder(access = AccessLevel.PRIVATE)
-    private CoursePlaceMenu(CoursePlace place, String name, Integer price, Boolean selected) {
+    private CoursePlaceMenu(CoursePlace place, String name, Integer price, Boolean selected, Integer position) {
         this.place = place;
         this.name = name;
         this.price = price;
         this.selected = selected;
+        this.position = position;
     }
 
-    public static CoursePlaceMenu create(CoursePlace place, String name, Integer price) {
+    public static CoursePlaceMenu create(CoursePlace place, String name, Integer price, Integer position) {
         CoursePlaceMenu menu = CoursePlaceMenu.builder()
                 .place(place)
                 .name(name)
                 .price(price)
                 .selected(false)
+                .position(position)
                 .build();
 
         menu.connectPlace(place);

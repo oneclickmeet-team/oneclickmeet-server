@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -45,6 +46,7 @@ public class CoursePlace extends BaseEntity {
     private Course course;
 
 	@OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST)
+    @OrderBy("position asc ")
 	private List<CoursePlaceMenu> menuList = new ArrayList<>();
 
     //=== Constroctor ===

@@ -59,10 +59,10 @@ class CourseRepositoryTest {
         CoursePlace place = CoursePlace.create(course, "파스타 가게", 1);
         place.addMemo("창가 자리 예약하기");
 
-        CoursePlaceMenu pasta = CoursePlaceMenu.create(place, "파스타", 12000);
+        CoursePlaceMenu pasta = CoursePlaceMenu.create(place, "파스타", 12000, 1);
         pasta.isSelected();
 
-        CoursePlaceMenu.create(place, "스테이크", 43000);
+        CoursePlaceMenu.create(place, "스테이크", 43000, 2);
 
         //when
         Course savedCourse = courseRepository.save(course);
@@ -132,10 +132,45 @@ class CourseRepositoryTest {
                         CoursePlace::getName,
                         CoursePlace::getPosition
                 )
-                .containsExactlyInAnyOrder(
+                .containsExactly(
                         tuple("연남 파스타", 1),
                         tuple("홍대 파스타", 2)
                 );
+
+    }
+
+    @Test
+    @DisplayName("메뉴가 여러개인 경우 순서대로 정렬되어 조회된다")
+    void 메뉴_조회_정렬() {
+        //given
+        Course course = Course.create("연남 데이트 코스");
+        CoursePlace place = CoursePlace.create(course, "파스타 가게", 1);
+
+        CoursePlaceMenu.create(place, "파스타", 12000, 2);
+        CoursePlaceMenu.create(place, "스테이크", 43000, 1);
+
+        //when
+        Course savedCourse = courseRepository.save(course);
+        Long savedCourseId = savedCourse.getId();
+
+        em.flush();
+        em.clear();
+
+        Course foundCourse = courseRepository.findById(savedCourseId).get();
+        List<CoursePlaceMenu> foundMenuList = foundCourse.getPlaces().getFirst().getMenuList();
+
+        //then
+        assertThat(foundMenuList).hasSize(2);
+        assertThat(foundMenuList)
+                .extracting(
+                        CoursePlaceMenu::getName,
+                        CoursePlaceMenu::getPrice
+                )
+                .containsExactly(
+                        tuple("스테이크", 43000),
+                        tuple("파스타", 12000)
+                );
+
 
     }
 
