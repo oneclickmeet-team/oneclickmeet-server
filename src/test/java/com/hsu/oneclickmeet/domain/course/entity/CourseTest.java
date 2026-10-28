@@ -19,7 +19,7 @@ class CourseTest {
 
 	@Test
 	void saveAndReloadsCourse() {
-		Course course = Course.createCourse("연남 데이트 코스");
+		Course course = Course.create("연남 데이트 코스");
 
 		em.persist(course);
 		Long savedId = course.getId();

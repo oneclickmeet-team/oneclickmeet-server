@@ -46,7 +46,7 @@ public class Course extends BaseEntity {
         this.name = name;
     }
 
-    public static Course createCourse(String name) {
+    public static Course create(String name) {
         return Course.builder()
                 .name(name)
                 .build();

@@ -27,7 +27,7 @@ class CourseRepositoryTest {
     @Test
     void saveAndReloadsCourse() {
         //given
-        Course course = Course.createCourse("연남 데이트 코스");
+        Course course = Course.create("연남 데이트 코스");
 
         //when
         Course savedCourse = courseRepository.save(course);
