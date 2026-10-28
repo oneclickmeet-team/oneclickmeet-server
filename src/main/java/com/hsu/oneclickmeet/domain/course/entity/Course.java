@@ -1,6 +1,7 @@
 package com.hsu.oneclickmeet.domain.course.entity;
 
 import com.hsu.oneclickmeet.global.entity.BaseEntity;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -32,8 +33,7 @@ public class Course extends BaseEntity {
     @OneToMany(mappedBy = "course")
     private List<CourseLibrary> libraries = new ArrayList<>();
 
-    @OneToMany(mappedBy = "course")
-    @Column(nullable = false)
+    @OneToMany(mappedBy = "course", cascade = CascadeType.PERSIST)
     private List<CoursePlace> places = new ArrayList<>();
 
     @OneToMany(mappedBy = "course")
@@ -54,5 +54,6 @@ public class Course extends BaseEntity {
 
     //=== Domin Method ===
 
+    //TODO: Course Create 메서드를 통해서 한번에 장소와 메뉴가 생성될 수 있도록 메서드 작성
 
 }

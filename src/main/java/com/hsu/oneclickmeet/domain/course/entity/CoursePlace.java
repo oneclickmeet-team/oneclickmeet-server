@@ -1,6 +1,7 @@
 package com.hsu.oneclickmeet.domain.course.entity;
 
 import com.hsu.oneclickmeet.global.entity.BaseEntity;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -11,6 +12,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -40,11 +42,37 @@ public class CoursePlace extends BaseEntity {
     @JoinColumn(name = "course_id")
     private Course course;
 
-	@OneToMany(mappedBy = "place")
+	@OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST)
 	private List<CoursePlaceMenu> menuList = new ArrayList<>();
 
     //=== Constroctor ===
 
+    @Builder(access = AccessLevel.PRIVATE)
+    private CoursePlace(Course course, String name, String memo) {
+        this.course = course;
+        this.name = name;
+        this.memo = memo;
+    }
 
-    //=== Domin Method ===
+    public static CoursePlace create(Course course, String name, String memo) {
+
+        CoursePlace place = CoursePlace.builder()
+                .course(course)
+                .name(name)
+                .memo(memo)
+                .build();
+
+        place.connectCourse(course);
+        return place;
+    }
+
+    //=== 연관관계 메서드 ===
+
+    private void connectCourse(Course course) {
+        this.course = course;
+        course.getPlaces().add(this);
+    }
+
+    //=== 도메인 메서드 ===
+
 }
