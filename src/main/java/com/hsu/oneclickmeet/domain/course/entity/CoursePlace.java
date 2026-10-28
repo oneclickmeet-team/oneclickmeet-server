@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Getter
@@ -36,7 +37,8 @@ public class CoursePlace extends BaseEntity {
     @Column(name = "place_memo")
     private String memo;
 
-    //TODO: 방문 순서는 어떻게 나타내야 할까..
+    @Column(name = "visit_order", nullable = false)
+    private Integer position;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "course_id")
@@ -48,18 +50,19 @@ public class CoursePlace extends BaseEntity {
     //=== Constroctor ===
 
     @Builder(access = AccessLevel.PRIVATE)
-    private CoursePlace(Course course, String name, String memo) {
+    private CoursePlace(Course course, String name, String memo, Integer position) {
         this.course = course;
         this.name = name;
         this.memo = memo;
+        this.position = position;
     }
 
-    public static CoursePlace create(Course course, String name, String memo) {
+    public static CoursePlace create(Course course, String name, Integer position) {
 
         CoursePlace place = CoursePlace.builder()
                 .course(course)
                 .name(name)
-                .memo(memo)
+                .position(position)
                 .build();
 
         place.connectCourse(course);
@@ -75,4 +78,13 @@ public class CoursePlace extends BaseEntity {
 
     //=== 도메인 메서드 ===
 
+    public void addMemo(String memo) {
+        Objects.requireNonNull(memo, "memo는 null이면 안됩니다.");
+        if (memo.isEmpty()) {
+            //TODO: 도메인 에러로 변경 필요
+            throw new IllegalArgumentException("메모는 빈 문자열을 허용하지 않습니다.");
+        }
+
+        this.memo = memo;
+    }
 }

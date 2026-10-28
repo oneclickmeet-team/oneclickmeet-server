@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -34,6 +35,7 @@ public class Course extends BaseEntity {
     private List<CourseLibrary> libraries = new ArrayList<>();
 
     @OneToMany(mappedBy = "course", cascade = CascadeType.PERSIST)
+    @OrderBy("position asc") // 조회 시 오름차순 정렬
     private List<CoursePlace> places = new ArrayList<>();
 
     @OneToMany(mappedBy = "course")

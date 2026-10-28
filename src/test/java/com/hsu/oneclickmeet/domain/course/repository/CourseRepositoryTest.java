@@ -12,6 +12,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.*;
 
 @DataJpaTest
@@ -54,7 +56,8 @@ class CourseRepositoryTest {
     void 장소와_메뉴를_함께_저장() {
         //given
         Course course = Course.create("연남 데이트 코스");
-        CoursePlace place = CoursePlace.create(course, "파스타 가게", "창가 자리 예약하기");
+        CoursePlace place = CoursePlace.create(course, "파스타 가게", 1);
+        place.addMemo("창가 자리 예약하기");
 
         CoursePlaceMenu pasta = CoursePlaceMenu.create(place, "파스타", 12000);
         pasta.isSelected();
@@ -99,6 +102,40 @@ class CourseRepositoryTest {
         assertThat(foundPlace.getMenuList())
                 .allSatisfy(menu ->
                         assertThat(menu.getPlace().getId()).isEqualTo(place.getId()));
+
+    }
+
+    @Test
+    @DisplayName("장소가 여러개일 때 조회시 순서대로 정렬된다")
+    void 장소_조회_정렬() {
+        //given
+        Course course = Course.create("연남 데이트");
+        CoursePlace place1 = CoursePlace.create(course, "연남 파스타", 1);
+        CoursePlace place2 = CoursePlace.create(course, "홍대 파스타", 2);
+
+        //when
+
+        Course savedCourse = courseRepository.save(course);
+        Long savedCourseId = savedCourse.getId();
+
+        em.flush();
+        em.clear();
+
+        Course foundCourse = courseRepository.findById(savedCourseId).get();
+        List<CoursePlace> foundPlaces = foundCourse.getPlaces();
+
+        //then
+        assertThat(foundCourse.getName()).isEqualTo("연남 데이트");
+        assertThat(foundPlaces).hasSize(2);
+        assertThat(foundPlaces)
+                .extracting(
+                        CoursePlace::getName,
+                        CoursePlace::getPosition
+                )
+                .containsExactlyInAnyOrder(
+                        tuple("연남 파스타", 1),
+                        tuple("홍대 파스타", 2)
+                );
 
     }
 
