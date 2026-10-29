@@ -67,6 +67,46 @@ DTO와 엔티티에 `@Data`를 사용하지 않는다. 엔티티는 일반 클�
 
 코드 포맷터는 하나의 설정을 공유한다. 사용할 도구와 설정 파일은 첫 공용 기반 PR에서 정한다.
 
+## 기본 컨벤션 자동 검사
+
+운영 코드의 아래 규칙을 공통 테스트로 검사한다. 규칙은 한 번 작성해 모든 PR에서 재사용하며, 컨벤션이 바뀔 때 함께 수정한다. 아키텍처 검사는 main 컴파일 출력 전체를, 소스 검사는 `src/main/java`를 대상으로 한다. 테스트 코드·검증용 fixture는 검사 대상에서 제외한다.
+
+| 검사 규칙 | 기존 근거 | 적용 대상과 예외 |
+|---|---|---|
+| 역할별 패키지 위치 | 위의 패키지 구조 | Spring Controller·Service·Repository, Spring Data Repository, JPA Entity는 `domain.<업무>.controller/service/repository/entity`와 그 하위에 둔다. `@MappedSuperclass`는 해당 업무의 `entity` 또는 `global.entity`에 둔다. 설정·예외 등 다른 공통 역할은 이 위치 검사로 제한하지 않는다. |
+| DTO 위치 | 요청·응답 DTO 분리 | `domain.<업무>.dto` 아래 타입은 `dto.request` 또는 `dto.response`와 그 하위에 둔다. 일반 값 객체 record까지 DTO로 간주하지 않는다. |
+| Controller의 Repository 직접 의존 금지 | Controller의 서비스 호출·응답 구성 책임 | Controller에서 Repository 역할 타입이나 `repository` 패키지 타입을 직접 참조하는지 검사한다. |
+| Service의 Controller 의존 금지 | Controller·Service의 역할 분리 | Service에서 Controller 역할 타입이나 `controller` 패키지 타입을 직접 참조하는지 검사한다. 도메인 간 호출·의존성의 일괄 금지는 추가하지 않는다. |
+| 생성자 주입 | `private final`과 생성자 주입 | 운영 코드의 필드·메서드에 붙은 `@Autowired`, `@Inject`, `@Resource`, `@PersistenceContext`, `@PersistenceUnit` 주입을 금지한다. 생성자 주입과 설정값의 `@Value`는 허용한다. 테스트의 필드 주입은 대상이 아니다. |
+| 주입 의존성의 `private final` | 의존성 주입 기준 | Controller·Service의 생성자 인자와 같은 타입인 인스턴스 필드를 검사한다. Lombok 생성자도 포함한다. 정적 필드·로거, `@Value`, 기본형·enum·`java.lang` 값, 생성자 인자에 대응하지 않는 일반 상태 필드는 제외한다. 엔티티 필드 전체에 적용하지 않는다. |
+| DTO의 `record` | DTO 구현 기준 | `dto` 패키지의 클래스·인터페이스와 중첩 선언을 검사한다. 보조 enum·애너테이션 선언은 허용한다. |
+| DTO·엔티티의 Lombok `@Data` 금지 | Lombok과 엔티티 기준 | DTO와 `@Entity`·`@MappedSuperclass` 타입을 검사한다. |
+| 엔티티 클래스 전체 Lombok `@Setter` 금지 | 엔티티 변경 기준 | `@Entity`·`@MappedSuperclass` 타입의 클래스 애너테이션을 검사한다. 필드 단위 setter는 이 규칙의 금지 대상이 아니며, 사용 의도는 리뷰에서 확인한다. |
+
+ArchUnit은 컴파일된 운영 코드의 역할·의존성을 검사한다. JavaParser는 컴파일 후 사라지는 Lombok 애너테이션과 record 선언을 Java 21 구문 트리로 검사한다. 두 검사는 DB나 Spring 컨텍스트를 실행하지 않는다. 필드 주입 등 테스트에서 필요한 패턴을 허용하기 위해 운영 코드만 검사한다.
+
+패키지 이름이나 생성자 인자 타입만으로 업무 소유권과 모든 의존성을 판별할 수는 없다. 소스 검사도 별도 심볼 해석기 없이 전체 이름·명시 import·와일드카드 import를 확인한다. 다른 파일에 있는 동명 애너테이션 등 복잡한 이름 해석은 자동 검사의 한계로 남는다. 검사 규칙과 허용·위반 예시는 [컨벤션 테스트](../src/test/java/com/hsu/oneclickmeet/global/convention/)에서 관리한다.
+
+### 실행과 실패 처리
+
+```bash
+# DB 없이 컨벤션 검사와 규칙 자체의 허용·위반 예시 검증
+./gradlew test --tests 'com.hsu.oneclickmeet.global.convention.*'
+
+# 테스트 DB 설정 후 전체 빌드: 컨벤션 검사도 포함
+./gradlew build
+```
+
+`test`는 운영 Java 소스도 입력으로 추적하므로, 바이트코드가 같아지는 소스 변경도 다시 검사한다. 실패 위치와 규칙은 Gradle 출력과 `build/reports/tests/test/index.html`에서 확인한다. 새 규칙을 추가하거나 예외를 바꿀 때는 허용·위반 예시를 함께 갱신한다.
+
+CI의 기존 `Build and Test`는 `./gradlew build`를 실행한다. 컨벤션 테스트 실패는 빌드 실패로 전달되며, 필수 검사 조건은 본인 소유 영역의 PR에도 적용된다. 관리자 우회 권한과 기존 사람 승인·CODEOWNERS 기준은 유지한다.
+
+### AI 보조 리뷰
+
+업무에 맞는 코드 배치, 계층별 책임, Service 추상화 필요성, 엔티티 직접 응답, JPA·트랜잭션·동시성·테스트의 구체적인 위험은 코드 맥락과 함께 검토한다. 이 항목을 새 CI 강제 규칙으로 만들지 않는다.
+
+[AI 보조 리뷰 지침](../.github/copilot-instructions.md)은 Copilot의 저장소 지침이며, 다른 AI 도구에도 같은 검토 기준을 전달할 수 있다. 파일 추가 자체가 도구 연결이나 자동 리뷰 활성화를 뜻하지 않는다. AI는 문제와 근거만 간결하게 제시하며, 교육 설명이나 팀 내 질문·조율 절차를 붙이지 않는다. AI의 리뷰 완료·승인·대화 해결 여부는 병합 조건으로 추가하지 않는다.
+
 ## API 요청과 공통 응답
 
 | 항목 | 기준 |
