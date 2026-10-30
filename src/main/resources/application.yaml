@@ -1,3 +1,6 @@
 spring:
   application:
     name: oneclickme
+kakao:
+  local:
+    rest-api-key: 5a64128dc98fd17f44486d25f3e3f72d 
