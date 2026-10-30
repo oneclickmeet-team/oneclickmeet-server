@@ -16,6 +16,10 @@ GitHub Flow를 사용한다. 기준 브랜치는 `main`이며, 작업 브랜치�
 
 CI는 PR과 `main` push에서 빌드·테스트를 수행한다. `main` 병합 시 dev 서버에 자동 배포하는 것으로 정했으며, 자동 배포는 서버 리드가 추후 구성한다.
 
+`Build and Test`에는 [기본 컨벤션 검사](docs/conventions.md#기본-컨벤션-자동-검사)도 포함한다. 본인 소유 영역의 PR도 일반 병합 경로에서는 이 필수 검사를 통과해야 한다. 로컬에서는 DB 없이 `./gradlew test --tests 'com.hsu.oneclickmeet.global.convention.*'`로 먼저 확인할 수 있으며, 전체 빌드는 기존과 같이 테스트 DB 설정이 필요하다.
+
+[Codex 보조 리뷰 지침](AGENTS.md#code-review-rules)은 맥락이 필요한 코드 문제를 찾는 데 사용한다. 저장소 연결 후 Codex의 자동 리뷰 설정을 사용하거나 PR 댓글의 `@codex review`로 요청한다. AI의 의견·승인은 사람의 승인을 대신하지 않으며, AI 리뷰 완료나 대화 해결을 별도 병합 조건으로 요구하지 않는다. 기존 CODEOWNERS·사람 승인·관리자 우회 설정은 유지한다.
+
 ## 커밋과 PR 제목
 
 작업 브랜치의 커밋은 `타입: 작업 내용`으로 작성하며 이모지를 사용하지 않는다. PR 제목에는 태그를 붙이고 이모지를 사용하지 않으며, 최종 Squash 커밋에도 PR 제목을 유지한다.
