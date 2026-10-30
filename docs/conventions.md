@@ -188,6 +188,51 @@ CI의 기존 `Build and Test`는 `./gradlew build`를 실행한다. 컨벤션 �
 - 공통 오류 정의는 `global.exception`, 업무 오류 정의는 해당 도메인에 둔다. 공통 처리기가 동일한 응답 형식으로 변환한다.
 - 같은 업무 영역·HTTP 상태에서 여러 오류를 구분해야 할 때의 세부 코드 규칙은 첫 도메인 오류 목록을 작성할 때 정한다.
 
+### 공통 오류 처리 계약
+
+| 타입 | 역할 |
+|---|---|
+| `global.response.ApiResponse<T>` | `success`, `data`, `error` 공통 응답. `success(data)`와 `failure(error)`로 생성 |
+| `global.exception.ErrorCode` | HTTP 상태인 `getStatus()`, 공개 오류 코드인 `getCode()`, 공개 메시지인 `getMessage()`를 제공하는 공통 인터페이스 |
+| 각 도메인의 `exception.*ErrorCode` | `ErrorCode`를 구현하고 해당 업무의 오류 값을 정의 |
+| `global.exception.BusinessException` | 발생한 업무 오류의 `ErrorCode`를 보관하는 예외 |
+| `global.exception.ErrorResponse` | `code`, `message`와 입력 검증 실패에만 제공하는 `errors` 목록 |
+| `global.exception.GlobalExceptionHandler` | MVC 예외를 HTTP 상태와 공통 실패 응답으로 변환하는 `@RestControllerAdvice` |
+
+HTTP 상태만으로 공통 오류와 도메인 오류를 구분하지 않는다. 예를 들어 도메인에서 정한 업무 오류가 `400`이어도 해당 도메인의 코드와 공개 메시지를 사용한다. 도메인 오류를 추가할 때 전역 처리기에 도메인별 분기를 추가하지 않고 `ErrorCode` 계약을 따른다.
+
+### 도메인에서 사용하기
+
+업무 실패 지점에서 도메인의 오류를 `BusinessException`으로 전달한다.
+
+```java
+throw new BusinessException(CourseErrorCode.NOT_FOUND);
+```
+
+이 예시는 `CourseErrorCode.NOT_FOUND`가 제공하는 `404`, `COURSE-0404`, `존재하지 않는 코스입니다.`를 응답에 사용한다. `success`는 `false`, `data`는 `null`이며 입력 검증 실패가 아니므로 `error.errors` 필드는 생략한다. 다른 도메인도 자신의 `exception` 패키지에서 같은 방식으로 오류를 정의한다.
+
+성공 응답에는 `ApiResponse.success(data)`를 사용할 수 있다. 이 공통 타입의 추가가 기존 API 전체의 성공 응답을 자동으로 감싸지는 않으며, `204` 응답은 기존 기준대로 본문을 반환하지 않는다.
+
+### 예외별 변환과 공개 범위
+
+| 상황 | HTTP 상태·오류 코드 | `error.errors` |
+|---|---|---|
+| `BusinessException` | 도메인의 `ErrorCode`에 지정한 상태·코드·공개 메시지 | 생략 |
+| 요청 본문·모델·메서드 인자의 입력 검증 실패 | `400`, `COMMON-0400`, `입력값을 확인해 주세요.` | 필드와 검증 메시지 목록 |
+| 잘못된 JSON, 요청 값의 타입 불일치, 필수 요청 값 누락 등 바인딩 실패 | `400`, `COMMON-0400`, `입력값을 확인해 주세요.` | 생략 |
+| 지원하지 않는 메서드·미디어 타입 등 다른 Spring MVC 예외 | 기존 HTTP 상태와 `Allow` 등의 헤더를 유지하고, `COMMON-0405`처럼 상태를 네 자리로 표현한 공통 코드 사용 | 생략 |
+| 예상하지 못한 예외·메서드 반환값 검증 실패 | `500`, `COMMON-0500`, `요청 처리 중 오류가 발생했습니다.` | 생략 |
+
+`error.errors`의 원소는 `ErrorResponse.FieldErrorDetail`이며 `field`, `message`를 제공한다. 검증 메시지는 공개 가능한 문구로 작성하고, 거부된 입력값이나 내부 예외·SQL·스택 정보를 별도 필드로 넣지 않는다. `errors`를 제공하지 않는 오류에서는 해당 필드를 생략하되 공통 래퍼의 `data: null`, `error: null` 규칙은 유지한다.
+
+전역 처리기는 `ResponseEntityExceptionHandler`를 확장하여 Spring MVC가 정한 상태와 응답 헤더를 보존한다. 서버 오류의 내부 예외와 스택은 `ERROR` 로그에 기록하고, 응답에는 일반 안내 문구만 제공한다.
+
+### MVC와 보안 필터의 처리 경계
+
+`GlobalExceptionHandler`는 MVC의 예외 처리 경로에서 동작한다. MVC에 도달하기 전 보안 필터에서 발생한 인증·인가 오류는 Spring Security의 `AuthenticationEntryPoint`, `AccessDeniedHandler` 등 보안 처리 경로가 담당한다.
+
+MVC까지 전달된 `AuthenticationException`, `AccessDeniedException`도 공통 `500` 오류로 바꾸지 않고 다시 던져 기존 보안 처리 경로를 유지한다. 보안 필터의 오류 응답 통일, 인증·인가 구현은 별도 작업이며 이 전역 처리기만으로 적용됐다고 보지 않는다.
+
 ## JPA와 DB
 
 | 항목 | 기준 |
