@@ -38,11 +38,11 @@ Recent history includes `chore: 개발 컨벤션 및 GitHub 협업 템플릿 추
 
 Follow GitHub Flow: branch from `main` using `type/issue-number`, such as `feat/12`. Target `main`, use the PR template, link issues, and record verification. PR titles use tags without emojis, for example `[Feat] 로그인 API 제작`; preserve that title in the final Squash commit.
 
-All changes must go through a PR and pass required CI before Squash merge. Use [.github/CODEOWNERS](.github/CODEOWNERS) for domain ownership and review routing. Owners may merge isolated internal changes within agreed API and domain contracts without another approval and remain responsible for the result. Domain entities and DTOs remain owned by their domain implementer; their file type alone does not require joint review.
+All changes must go through a PR and pass required CI before Squash merge. Follow [the review and merge criteria](CONTRIBUTING.md#변경-범위별-리뷰-기준) and use [.github/CODEOWNERS](.github/CODEOWNERS) for domain ownership and review routing. Domain entities, DTOs, and tests belong to their domain implementer. Owners may merge isolated internal changes within agreed contracts under those criteria and remain responsible for the result.
 
-Changes to another owner's area, jointly reviewed code or infrastructure, SQL, agreed contracts, or behavior affecting other areas require an affected backend developer's approval other than the author's. `global/entity` and its tests are owned by jwon0523 and excluded from path-based joint approval; the owner shares changes or requests additional review when needed. Request review when the impact or ownership is unclear. File ownership alone does not prove that a change is isolated. Automatic approval dismissal remains disabled; request a new review if the approved contract or impact changes. CODEOWNERS does not itself enforce this author-aware policy. GitHub protection settings are reviewed and applied separately; do not bypass existing protections when they differ from the documented policy.
+Before changing entities or schemas, apply [the contract-impact criteria](CONTRIBUTING.md#엔티티스키마-변경의-계약-영향). When an agreed ERD or DBML exists, read it before making changes and update it with code in the same PR when the schema changes. Record contract impact, the reason for that judgment, and affected areas as specified in CONTRIBUTING.md. The PR author must request approval from the affected owner when a contract changes; clarify uncertain impact with the other backend developer and obtain approval before merging.
 
-Describe cross-domain impact and review points freely in the PR body, and request review from affected owners when needed. Use GitHub's native required Code Owner review rule together with PR and `Build and Test` requirements. Do not assume owner-authored exemptions have been verified until checked in an actual PR. Do not activate or change GitHub rulesets without explicit user authorization.
+CODEOWNERS routes review by path and cannot judge contract impact or enforce the full approval policy. Follow [the GitHub settings policy](CONTRIBUTING.md#github-설정); do not assume owner-authored exemptions are verified until checked in an actual PR, bypass existing protections, or activate or change GitHub rulesets without explicit user authorization.
 
 ## Code Review Rules
 
@@ -57,6 +57,7 @@ Describe cross-domain impact and review points freely in the PR body, and reques
 - 요청·응답 DTO 분리, 엔티티 직접 응답 여부, 변경 의도가 드러나는 엔티티 메서드를 확인한다. 명확한 record·Lombok 규칙은 CI 검사 결과와 중복해 지적하지 않는다.
 - 입력의 null·빈 목록·경계값, 예외 누락, HTTP 상태와 공통 응답의 일치 여부를 확인한다.
 - 인증·소유자 확인 누락, 다른 사용자의 데이터 접근 경로와 API·도메인 계약 변경의 영향을 확인한다.
+- 엔티티·스키마 변경은 [CONTRIBUTING.md의 계약 영향 기준](CONTRIBUTING.md#엔티티스키마-변경의-계약-영향)으로 검토한다. 구조·제약·업무 의미·외부 계약·기존 데이터 호환성의 변경 여부를 확인하고, 필수 리뷰 여부도 같은 기준으로 판단한다.
 - JPA 매핑, 저장·삭제 책임, 부분 저장, 조회 쿼리, 중복 요청·경쟁 조건에서 구체적인 위험이 보이면 발생 경로를 제시한다. 합의하지 않은 트랜잭션·동시성 정책을 새 필수 규칙으로 만들지 않는다.
 - 변경한 동작의 성공·실패·경계 사례에서 빠진 검증을 확인한다. 실행하지 않은 테스트나 운영 효과를 확인된 결과처럼 표현하지 않는다.
 
