@@ -1,3 +1,6 @@
 spring:
   application:
     name: oneclickme
+kakao:
+  local:
+    rest-api-key: ${KAKAO_REST_API_KEY:}
