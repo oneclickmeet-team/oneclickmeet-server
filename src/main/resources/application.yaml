@@ -3,4 +3,4 @@ spring:
     name: oneclickme
 kakao:
   local:
-    rest-api-key: 5a64128dc98fd17f44486d25f3e3f72d 
+    rest-api-key: ${KAKAO_REST_API_KEY:}
