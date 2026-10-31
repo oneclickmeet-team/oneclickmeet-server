@@ -186,3 +186,6 @@ nbdist/
 
 # Gradle Wrapper는 저장소에 포함
 !gradle/wrapper/gradle-wrapper.jar
+
+# Codex 관련 설정
+.codex/
