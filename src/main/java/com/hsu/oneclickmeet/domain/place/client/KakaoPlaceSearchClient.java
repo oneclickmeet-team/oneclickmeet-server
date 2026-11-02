@@ -116,9 +116,12 @@ public class KakaoPlaceSearchClient implements PlaceSearchClient {
 	}
 
 	private PlaceSearchResult toResult(PlaceSearchCommand command, KakaoKeywordSearchResponse body) {
-		List<KakaoKeywordSearchResponse.Document> documents = body.documents() == null ? List.of() : body.documents();
-		List<PlaceCandidate> candidates = documents.stream().map(this::toCandidate).toList();
-		boolean hasNext = body.meta() != null && Boolean.FALSE.equals(body.meta().isEnd());
+		if (body.documents() == null || body.meta() == null || body.meta().isEnd() == null) {
+			log.warn("카카오 로컬 API 응답에 필수 필드(documents, meta.is_end)가 없습니다.");
+			throw new PlaceUpstreamException(Reason.BAD_RESPONSE, "카카오 로컬 API 응답에 필수 필드가 없습니다.");
+		}
+		List<PlaceCandidate> candidates = body.documents().stream().map(this::toCandidate).toList();
+		boolean hasNext = !body.meta().isEnd();
 		return new PlaceSearchResult(candidates, command.page(), hasNext);
 	}
 

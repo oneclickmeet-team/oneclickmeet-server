@@ -4,6 +4,8 @@ import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException.Reason;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -260,6 +262,35 @@ class KakaoPlaceSearchClientTests {
 
 		assertThatThrownBy(() -> client("test-key").search(command()))
 			.satisfies(thrown -> assertReason(thrown, Reason.BAD_RESPONSE));
+	}
+
+	@ParameterizedTest(name = "필수 필드가 없는 응답: {0}")
+	@ValueSource(strings = {
+		"{}",
+		"{\"meta\": {\"is_end\": true}}",
+		"{\"documents\": []}",
+		"{\"documents\": [], \"meta\": {}}",
+		"{\"documents\": [], \"meta\": {\"is_end\": null}}"
+	})
+	@DisplayName("documents 또는 meta.is_end가 없는 정상(200) 응답은 BAD_RESPONSE로 분류한다")
+	void classifiesResponseMissingRequiredFieldsAsBadResponse(String body) {
+		server.expect(requestTo(org.hamcrest.Matchers.startsWith(SEARCH_URL_PREFIX)))
+			.andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+
+		assertThatThrownBy(() -> client("test-key").search(command()))
+			.satisfies(thrown -> assertReason(thrown, Reason.BAD_RESPONSE));
+	}
+
+	@Test
+	@DisplayName("documents가 빈 배열인 정상 응답은 BAD_RESPONSE가 아니라 빈 결과로 처리한다")
+	void treatsEmptyDocumentsWithMetaAsNormalEmptyResult() {
+		server.expect(requestTo(org.hamcrest.Matchers.startsWith(SEARCH_URL_PREFIX)))
+			.andRespond(withSuccess("{\"documents\": [], \"meta\": {\"is_end\": true}}", MediaType.APPLICATION_JSON));
+
+		PlaceSearchResult result = client("test-key").search(command());
+
+		assertThat(result.candidates()).isEmpty();
+		assertThat(result.hasNext()).isFalse();
 	}
 
 	@Test
