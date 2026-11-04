@@ -173,7 +173,7 @@ public class MemoService {
 	}
 
 	private Memo requireWritableMemo(long memberId, long memoId) {
-		// Resolve the immutable target without loading the memo before locking the relationship.
+		// Resolve the target without loading the memo before locking the relationship.
 		var target = memos.findOwnedTarget(memoId, memberId)
 				.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
 		if (target.getType() == MemoTargetType.SHARED_COURSE) {

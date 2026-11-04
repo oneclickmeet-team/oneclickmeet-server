@@ -1,6 +1,5 @@
 package com.hsu.oneclickmeet.domain.memo.service;
 
-import com.hsu.oneclickmeet.domain.memo.entity.Memo;
 import com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType;
 import com.hsu.oneclickmeet.domain.memo.repository.MemoRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,9 +13,16 @@ public class MemoTransferService {
 
 	private final MemoRepository memos;
 
+	/**
+	 * Relinks the recipient's existing memo to their new personal copy.
+	 * The caller holds the source couple lock in a READ_COMMITTED transaction and supplies
+	 * the recipient's fresh copy ID, or the same ID on retry, before closing shared access.
+	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void copyForUnshare(long sharedCourseId, long memberId, long personalCourseId) {
-		memos.findByAuthorIdAndTargetTypeAndTargetId(memberId, MemoTargetType.SHARED_COURSE, sharedCourseId)
-				.ifPresent(memo -> memos.save(new Memo(memberId, MemoTargetType.COURSE, personalCourseId, memo.getContent())));
+		if (memos.existsByAuthorIdAndTargetTypeAndTargetId(memberId, MemoTargetType.COURSE, personalCourseId)) {
+			return;
+		}
+		memos.moveToCopy(memberId, MemoTargetType.SHARED_COURSE, sharedCourseId, MemoTargetType.COURSE, personalCourseId);
 	}
 }
