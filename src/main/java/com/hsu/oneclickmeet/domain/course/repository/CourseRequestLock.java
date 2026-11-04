@@ -29,4 +29,8 @@ public class CourseRequestLock {
 	public boolean tryAcquireShare(long memberId, long courseId, UUID requestKey) {
 		return locks.tryAcquire(":course-share:" + memberId + ":" + courseId + ":" + requestKey);
 	}
+
+	public boolean tryAcquireSharedUpdate(long memberId, long sharedCourseId, UUID requestKey) {
+		return locks.tryAcquire(":shared-course-update:" + memberId + ":" + sharedCourseId + ":" + requestKey);
+	}
 }

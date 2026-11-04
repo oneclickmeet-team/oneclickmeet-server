@@ -15,6 +15,12 @@ import java.util.Optional;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
 
+	@Query("select count(place) > 0 from CoursePlace place where place.id = :id")
+	boolean existsPlaceById(@Param("id") long id);
+
+	@Query("select count(menu) > 0 from CoursePlaceMenu menu where menu.id = :id")
+	boolean existsMenuById(@Param("id") long id);
+
 	@Query("""
 			select course.id as courseId, course.name as courseName,
 			       size(course.places) as placeCount, course.createdAt as createdAt

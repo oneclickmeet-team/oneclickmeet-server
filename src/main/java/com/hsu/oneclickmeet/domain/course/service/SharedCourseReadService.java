@@ -9,6 +9,7 @@ import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.SharedCourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.SharedCourseListResponse;
+import com.hsu.oneclickmeet.domain.course.entity.SharedCourse;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
@@ -20,6 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.LongFunction;
 
 @Service
 @Transactional(readOnly = true)
@@ -64,14 +69,18 @@ public class SharedCourseReadService {
 		var shared = sharedCourses.findByIdAndCoupleId(sharedCourseId, couple.getId())
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
 		var course = CourseReadService.toDetail(shared.getCourse());
-		long editorId = shared.getSharedByMemberId();
-		var editor = new PartnerResponse(editorId, members.findDisplayName(editorId).orElse(null));
-		var places = course.places().stream().map(place -> toSharedPlace(place, editor)).toList();
+		Map<Long, PartnerResponse> editors = new HashMap<>();
+		LongFunction<PartnerResponse> editorFor = id -> editors.computeIfAbsent(id,
+				member -> new PartnerResponse(member, members.findDisplayName(member).orElse(null)));
+		var editor = editorFor.apply(Objects.requireNonNullElse(shared.getLastEditedByMemberId(), shared.getSharedByMemberId()));
+		var menuEditors = menuEditors(shared);
+		var places = course.places().stream().map(place -> toSharedPlace(place, menuEditors, editorFor)).toList();
 		boolean readOnly = couple.getStatus() == CoupleStatus.GRACE;
 		return new SharedCourseDetailResponse(shared.getId(), couple.getId(), couple.getStatus(), readOnly,
 				readOnly ? couple.getGraceEndsAt() : null, shared.getStructureVersion(), editor,
 				course.courseName(), places, course.selectedTotalPrice(), course.placesWithoutSelectedMenusCount(),
-				course.walkingTimeSource(), course.warnings(), course.createdAt(), course.updatedAt());
+				course.walkingTimeSource(), course.warnings(), course.createdAt(),
+				shared.getLastEditedAt() == null ? course.updatedAt() : shared.getLastEditedAt());
 	}
 
 	private Couple requireCurrentCouple(long memberId, ErrorCode errorCode) {
@@ -79,11 +88,21 @@ public class SharedCourseReadService {
 				.orElseThrow(() -> new BusinessException(errorCode));
 	}
 
+	private static Map<Long, Long> menuEditors(SharedCourse shared) {
+		Map<Long, Long> editors = new HashMap<>();
+		for (var place : shared.getCourse().getPlaces()) {
+			for (var menu : place.getMenuList()) {
+				editors.put(menu.getId(), Objects.requireNonNullElse(menu.getLastEditedByMemberId(), shared.getSharedByMemberId()));
+			}
+		}
+		return editors;
+	}
+
 	private static SharedCourseDetailResponse.Place toSharedPlace(CourseDetailResponse.Place place,
-			PartnerResponse editor) {
+			Map<Long, Long> menuEditors, LongFunction<PartnerResponse> editorFor) {
 		var menus = place.menuList().stream()
 				.map(menu -> new SharedCourseDetailResponse.Menu(menu.menuId(), menu.menuName(), menu.price(),
-						menu.selected(), menu.updatedAt(), editor))
+						menu.selected(), menu.updatedAt(), editorFor.apply(menuEditors.get(menu.menuId()))))
 				.toList();
 		return new SharedCourseDetailResponse.Place(place.coursePlaceId(), place.placeId(), place.placeName(),
 				place.latitude(), place.longitude(), place.estimatedWalkingMinutesFromPrevious(), menus,

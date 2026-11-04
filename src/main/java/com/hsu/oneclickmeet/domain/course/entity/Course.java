@@ -81,6 +81,20 @@ public class Course extends BaseEntity {
 		places.addAll(updatedPlaces);
 	}
 
+	public void changeName(String name) {
+		this.name = name;
+	}
+
+	public CoursePlace addPlace(long originalPlaceId, String name, int position) {
+		CoursePlace place = new CoursePlace(this, new PlaceInput(originalPlaceId, name, position, List.of()));
+		places.add(place);
+		return place;
+	}
+
+	public void removePlace(CoursePlace place) {
+		places.remove(place);
+	}
+
 	public Course copyForSharing() {
 		List<PlaceInput> copy = places.stream()
 				.map(place -> new PlaceInput(place.getOriginalPlaceId(), place.getName(), place.getPosition(),
