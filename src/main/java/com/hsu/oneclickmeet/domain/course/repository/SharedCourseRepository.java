@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface SharedCourseRepository extends JpaRepository<SharedCourse, Long> {
 
@@ -17,6 +18,12 @@ public interface SharedCourseRepository extends JpaRepository<SharedCourse, Long
 	boolean existsByIdAndCoupleId(long id, long coupleId);
 
 	Optional<SharedCourse> findByIdAndCoupleId(long sharedCourseId, long coupleId);
+
+	@Query("""
+			select shared.id from SharedCourse shared
+			where shared.couple.id = :coupleId and shared.id in :sharedCourseIds
+			""")
+	Set<Long> findSharedCourseIds(@Param("coupleId") long coupleId, @Param("sharedCourseIds") Set<Long> sharedCourseIds);
 
 	@Query("""
 			select shared.id as sharedCourseId, course.name as courseName,
