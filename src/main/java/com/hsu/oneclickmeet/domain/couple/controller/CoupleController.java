@@ -3,21 +3,26 @@ package com.hsu.oneclickmeet.domain.couple.controller;
 import com.hsu.oneclickmeet.domain.couple.dto.request.ConnectCoupleRequest;
 import com.hsu.oneclickmeet.domain.couple.dto.request.IssueInvitationRequest;
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
+import com.hsu.oneclickmeet.domain.couple.dto.response.DisconnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.InvitationResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.MyCoupleResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.MyInvitationResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose;
+import com.hsu.oneclickmeet.domain.couple.service.CoupleDisconnectionService;
 import com.hsu.oneclickmeet.domain.couple.service.CoupleService;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
 import com.hsu.oneclickmeet.global.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -26,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.util.UUID;
 
 @RestController
@@ -36,6 +42,7 @@ public class CoupleController {
 	private static final String UUID_PATTERN = "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}";
 
 	private final CoupleService coupleService;
+	private final CoupleDisconnectionService disconnectionService;
 
 	@GetMapping("/couples/me")
 	public ApiResponse<MyCoupleResponse> getMyCouple(@AuthenticationPrincipal Long memberId) {
@@ -63,6 +70,17 @@ public class CoupleController {
 			String idempotencyKey, @Valid @RequestBody ConnectCoupleRequest request) {
 		return ApiResponse.success(coupleService.connect(requireMemberId(memberId), UUID.fromString(idempotencyKey),
 			request.invitationCode()));
+	}
+
+	@PostMapping("/couples/{coupleId}/disconnections")
+	public ApiResponse<DisconnectionResponse> disconnect(@AuthenticationPrincipal Long memberId,
+			@PathVariable("coupleId") @Positive long coupleId,
+			@RequestHeader("Idempotency-Key") @Pattern(regexp = UUID_PATTERN, message = "멱등성 키는 UUID여야 합니다.")
+			String idempotencyKey, HttpServletRequest request) throws IOException {
+		long requesterId = requireMemberId(memberId);
+		boolean hasBody = request.getContentLengthLong() > 0 || request.getInputStream().read() != -1;
+		return ApiResponse.success(disconnectionService.disconnect(requesterId, coupleId,
+			UUID.fromString(idempotencyKey), hasBody));
 	}
 
 	private long requireMemberId(Long memberId) {

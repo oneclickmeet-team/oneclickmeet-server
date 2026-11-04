@@ -2,13 +2,17 @@ package com.hsu.oneclickmeet.domain.couple.controller;
 
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.CoupleResponse;
+import com.hsu.oneclickmeet.domain.couple.dto.response.DisconnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.InvitationResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.MyCoupleResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.MyInvitationResponse;
 import com.hsu.oneclickmeet.domain.couple.dto.response.PartnerResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
 import com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose;
+import com.hsu.oneclickmeet.domain.couple.service.CoupleDisconnectionService;
 import com.hsu.oneclickmeet.domain.couple.service.CoupleService;
+import com.hsu.oneclickmeet.global.exception.BusinessException;
+import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -49,6 +53,9 @@ class CoupleControllerTests {
 
 	@MockitoBean
 	private CoupleService coupleService;
+
+	@MockitoBean
+	private CoupleDisconnectionService disconnectionService;
 
 	@Test
 	void 인증된_회원의_관계와_상대_표시이름을_조회한다() throws Exception {
@@ -132,6 +139,72 @@ class CoupleControllerTests {
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.data.coupleId").value(10))
 			.andExpect(jsonPath("$.data.status").value("CONNECTED"));
+	}
+
+	@Test
+	void 관계_해제는_본문_없이_받고_유예_시작과_종료_시각을_반환한다() throws Exception {
+		Instant graceEndsAt = Instant.parse("2026-12-01T09:00:00Z");
+		when(disconnectionService.disconnect(MEMBER_ID, 10L, IDEMPOTENCY_KEY, false))
+			.thenReturn(new DisconnectionResponse(10L, CoupleStatus.GRACE, EXPIRES_AT, graceEndsAt));
+
+		mvc.perform(post("/api/v1/couples/10/disconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString()))
+			.andExpect(status().isOk())
+			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.coupleId").value(10))
+			.andExpect(jsonPath("$.data.status").value("GRACE"))
+			.andExpect(jsonPath("$.data.disconnectedAt").value(EXPIRES_AT.toString()))
+			.andExpect(jsonPath("$.data.graceEndsAt").value(graceEndsAt.toString()))
+			.andExpect(jsonPath("$.error").value(nullValue()));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"0", "-1", "invalid", "9223372036854775808"})
+	void 관계_ID가_양의_long이_아니면_400을_반환한다(String coupleId) throws Exception {
+		mvc.perform(post("/api/v1/couples/{coupleId}/disconnections", coupleId).with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString()))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(disconnectionService);
+	}
+
+	@Test
+	void 관계_해제에_멱등성_키가_빠지면_400을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/disconnections").with(member()).with(csrf()))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(disconnectionService);
+	}
+
+	@Test
+	void 관계_해제에_축약_UUID를_보내면_400을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/disconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", "1-2-3-4-5"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"))
+			.andExpect(jsonPath("$.error.errors[0].field").value("Idempotency-Key"));
+		verifyNoInteractions(disconnectionService);
+	}
+
+	@Test
+	void 관계_해제에_본문이_있으면_서비스에_전달한다() throws Exception {
+		when(disconnectionService.disconnect(MEMBER_ID, 10L, IDEMPOTENCY_KEY, true))
+			.thenThrow(new BusinessException(CommonErrorCode.BAD_REQUEST));
+
+		mvc.perform(post("/api/v1/couples/10/disconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString()).content("{}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+	}
+
+	@Test
+	void 관계_해제는_인증된_회원_ID가_없으면_401을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/disconnections").with(user("7")).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString()))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0401"));
+		verifyNoInteractions(disconnectionService);
 	}
 
 	@ParameterizedTest

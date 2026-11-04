@@ -1,7 +1,9 @@
 package com.hsu.oneclickmeet.domain.couple.service;
 
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
+import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +46,12 @@ class CoupleServiceIntegrationTests {
 	private CoupleService coupleService;
 
 	@Autowired
+	private CoupleDisconnectionService disconnectionService;
+
+	@Autowired
+	private CoupleRepository couples;
+
+	@Autowired
 	private JdbcTemplate jdbc;
 
 	@Autowired
@@ -64,6 +72,8 @@ class CoupleServiceIntegrationTests {
 
 	@AfterEach
 	void removeFixtures() {
+		jdbc.update("delete from couple_disconnection_replays where member_id in (?, ?, ?)",
+			ISSUER, ACCEPTOR, THIRD_MEMBER);
 		jdbc.update("delete from couple_connection_replays where member_id in (?, ?, ?)", ISSUER, ACCEPTOR, THIRD_MEMBER);
 		jdbc.update("delete from couple_invitations where issuer_id in (?, ?, ?)", ISSUER, ACCEPTOR, THIRD_MEMBER);
 		jdbc.update("delete from couples where first_member_id in (?, ?, ?) or second_member_id in (?, ?, ?)",
@@ -256,6 +266,111 @@ class CoupleServiceIntegrationTests {
 		var connection = coupleService.connect(ACCEPTOR, key, code);
 		assertThat(coupleService.connect(ACCEPTOR, key, code)).isEqualTo(connection);
 		assertThat(countRelationshipsFor(ACCEPTOR)).isOne();
+	}
+
+	@Test
+	void disconnectsForBothMembersAndKeepsTheSameGracePeriodOnRetries() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		UUID key = UUID.randomUUID();
+		var response = disconnectionService.disconnect(ISSUER, coupleId, key, false);
+
+		assertThat(response.coupleId()).isEqualTo(coupleId);
+		assertThat(response.status()).isEqualTo(CoupleStatus.GRACE);
+		assertThat(response.disconnectedAt()).isEqualTo(NOW);
+		assertThat(response.graceEndsAt()).isEqualTo(NOW.plus(Duration.ofHours(30 * 24)));
+		for (long memberId : List.of(ISSUER, ACCEPTOR)) {
+			var couple = coupleService.getMyCouple(memberId).couple();
+			assertThat(couple.disconnectedAt()).isEqualTo(response.disconnectedAt());
+			assertThat(couple.graceEndsAt()).isEqualTo(response.graceEndsAt());
+			assertThat(couple.remainingGraceDays()).isEqualTo(30);
+			assertThat(couple.sharedReadOnly()).isTrue();
+			assertThat(couple.canReconnect()).isTrue();
+		}
+
+		given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(1)));
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false)).isEqualTo(response);
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, UUID.randomUUID(), false)).isEqualTo(response);
+		assertThat(disconnectionService.disconnect(ACCEPTOR, coupleId, key, false)).isEqualTo(response);
+
+		given(clock.instant()).willReturn(response.graceEndsAt().minusSeconds(1));
+		UUID lateKey = UUID.randomUUID();
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, lateKey, false)).isEqualTo(response);
+		given(clock.instant()).willReturn(response.graceEndsAt());
+		assertThat(coupleService.getMyCouple(ISSUER).couple()).isNull();
+		assertThat(coupleService.getMyCouple(ACCEPTOR).couple()).isNull();
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, lateKey, false)).isEqualTo(response);
+		assertBusinessError("COUPLE-0409-02", () -> disconnectionService.disconnect(ISSUER, coupleId, key, false));
+	}
+
+	@Test
+	void checksCurrentAccessAndRejectsNonemptyBodiesWithoutCachingFailures() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		UUID key = UUID.randomUUID();
+		assertBusinessError("COMMON-0401", () -> disconnectionService.disconnect(99L, coupleId, key, false));
+		assertBusinessError("COUPLE-0404", () -> disconnectionService.disconnect(ISSUER, Long.MAX_VALUE, key, false));
+		assertBusinessError("COUPLE-0404", () -> disconnectionService.disconnect(THIRD_MEMBER, coupleId, key, false));
+		assertBusinessError("COMMON-0400", () -> disconnectionService.disconnect(ISSUER, coupleId, key, true));
+		assertThat(coupleService.getMyCouple(ISSUER).couple().status()).isEqualTo(CoupleStatus.CONNECTED);
+
+		var response = disconnectionService.disconnect(ISSUER, coupleId, key, false);
+		assertBusinessError("COUPLE-0409-03", () -> disconnectionService.disconnect(ISSUER, coupleId, key, true));
+		assertBusinessError("COUPLE-0404", () -> disconnectionService.disconnect(THIRD_MEMBER, coupleId, key, false));
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false)).isEqualTo(response);
+	}
+
+	@Test
+	void scopesReplayToTheRequestedCoupleAndReturnsTheStoredResultForAtLeast24Hours() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		UUID key = UUID.randomUUID();
+		var response = disconnectionService.disconnect(ISSUER, coupleId, key, false);
+
+		// Reconnecting may clear the live grace fields before a delayed retry arrives.
+		jdbc.update("update couples set status = 'CONNECTED', disconnected_at = null, grace_ends_at = null where id = ?",
+			coupleId);
+		given(clock.instant()).willReturn(NOW.plus(Duration.ofHours(24)).minusNanos(1_000));
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false)).isEqualTo(response);
+		assertThat(couples.findById(coupleId).orElseThrow().getStatus()).isEqualTo(CoupleStatus.CONNECTED);
+
+		jdbc.update("update couples set status = 'ENDED' where id = ?", coupleId);
+		assertBusinessError("COUPLE-0409-02",
+			() -> disconnectionService.disconnect(ISSUER, coupleId, UUID.randomUUID(), false));
+		long anotherCoupleId = createCouple(ISSUER, THIRD_MEMBER);
+		assertThat(disconnectionService.disconnect(ISSUER, anotherCoupleId, key, false).coupleId())
+			.isEqualTo(anotherCoupleId);
+	}
+
+	@Test
+	void reportsAnInProgressDisconnectionWhileItsReplayRowIsLocked() throws Exception {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		UUID key = UUID.randomUUID();
+		jdbc.update("insert into couple_disconnection_replays (member_id, couple_id, request_key) values (?, ?, ?)",
+			ISSUER, coupleId, key.toString());
+		var replayLocked = new CountDownLatch(1);
+		var releaseReplay = new CountDownLatch(1);
+		try (var executor = Executors.newFixedThreadPool(2)) {
+			try {
+				var lock = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+					jdbc.queryForObject("""
+						select id from couple_disconnection_replays
+						where member_id = ? and couple_id = ? and request_key = ? for update
+						""", Long.class, ISSUER, coupleId, key.toString());
+					replayLocked.countDown();
+					awaitRelease(releaseReplay);
+				}));
+				assertThat(replayLocked.await(5, TimeUnit.SECONDS)).isTrue();
+				executor.submit(() -> assertBusinessError("COUPLE-0409-04",
+					() -> disconnectionService.disconnect(ISSUER, coupleId, key, false))).get(5, TimeUnit.SECONDS);
+				releaseReplay.countDown();
+				lock.get(5, TimeUnit.SECONDS);
+			} finally {
+				releaseReplay.countDown();
+			}
+		}
+		assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false).status()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	private long createCouple(long firstMember, long secondMember) {
+		return couples.save(Couple.connect(firstMember, secondMember, NOW.minus(Duration.ofDays(1)))).getId();
 	}
 
 	private int countRelationshipsFor(long memberId) {
