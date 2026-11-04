@@ -26,11 +26,18 @@ public class CourseSaveRequestLock {
 	private final JdbcTemplate jdbcTemplate;
 
 	public void acquire(long memberId, UUID requestKey) {
+		acquire(memberId + ":" + requestKey);
+	}
+
+	public void acquireForUpdate(long memberId, long courseId, UUID requestKey) {
+		acquire("update:" + memberId + ":" + courseId + ":" + requestKey);
+	}
+
+	private void acquire(String key) {
 		if (!TransactionSynchronizationManager.isActualTransactionActive()
 				|| !TransactionSynchronizationManager.isSynchronizationActive()) {
 			throw new IllegalStateException("코스 저장 트랜잭션이 필요합니다.");
 		}
-		String key = memberId + ":" + requestKey;
 		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
 			Integer acquired = executeLockQuery(connection, ACQUIRE, key);
 			if (Integer.valueOf(0).equals(acquired)) {

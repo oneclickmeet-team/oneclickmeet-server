@@ -1,8 +1,11 @@
 package com.hsu.oneclickmeet.domain.course.repository;
 
 import com.hsu.oneclickmeet.domain.course.entity.Course;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,6 +36,19 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 			)
 			""")
 	Optional<Course> findOwnedCourse(@Param("memberId") long memberId, @Param("courseId") long courseId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			select course from Course course
+			where course.id = :courseId and exists (
+				select 1 from CourseLibrary library where library.course = course and library.memberId = :memberId
+			)
+			""")
+	Optional<Course> findOwnedCourseForUpdate(@Param("memberId") long memberId, @Param("courseId") long courseId);
+
+	@Modifying(flushAutomatically = true)
+	@Query("update Course course set course.updatedAt = :updatedAt where course.id = :courseId")
+	void recordUpdatedAt(@Param("courseId") long courseId, @Param("updatedAt") Instant updatedAt);
 
 	interface Summary {
 		long getCourseId();
