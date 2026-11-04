@@ -15,7 +15,10 @@ import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Entity
 @Getter
@@ -34,7 +37,7 @@ public class Course extends BaseEntity {
     @OneToMany(mappedBy = "course")
     private List<CourseLibrary> libraries = new ArrayList<>();
 
-    @OneToMany(mappedBy = "course", cascade = CascadeType.PERSIST)
+    @OneToMany(mappedBy = "course", cascade = CascadeType.PERSIST, orphanRemoval = true)
     @OrderBy("position asc") // 조회 시 오름차순 정렬
     private List<CoursePlace> places = new ArrayList<>();
 
@@ -61,6 +64,23 @@ public class Course extends BaseEntity {
 		return Collections.unmodifiableList(places);
 	}
 
+	public void replaceContents(String name, List<PlaceChange> changes) {
+		Map<Long, CoursePlace> existingPlaces = new HashMap<>();
+		places.forEach(place -> existingPlaces.put(place.getId(), place));
+		List<CoursePlace> updatedPlaces = new ArrayList<>(changes.size());
+		int position = 1;
+		for (PlaceChange change : changes) {
+			CoursePlace place = change.coursePlaceId() == null
+				? new CoursePlace(this, new PlaceInput(change.originalPlaceId(), change.name(), position, List.of()))
+				: Objects.requireNonNull(existingPlaces.get(change.coursePlaceId()));
+			place.replaceContents(position++, change.menus());
+			updatedPlaces.add(place);
+		}
+		this.name = name;
+		places.clear();
+		places.addAll(updatedPlaces);
+	}
+
 	public Course copyForSharing() {
 		List<PlaceInput> copy = places.stream()
 				.map(place -> new PlaceInput(place.getOriginalPlaceId(), place.getName(), place.getPosition(),
@@ -75,5 +95,11 @@ public class Course extends BaseEntity {
 	}
 
 	public record MenuInput(String name, Integer price, Integer position, boolean selected) {
+	}
+
+	public record PlaceChange(Long coursePlaceId, Long originalPlaceId, String name, List<MenuChange> menus) {
+	}
+
+	public record MenuChange(Long menuId, String name, Integer price, boolean selected) {
 	}
 }

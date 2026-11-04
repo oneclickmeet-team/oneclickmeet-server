@@ -31,6 +31,12 @@ public class CourseRequestLock {
 		}
 	}
 
+	public void acquireUpdate(long memberId, long courseId, UUID requestKey) {
+		if (!tryAcquire(":course-save:update:" + memberId + ":" + courseId + ":" + requestKey)) {
+			throw new BusinessException(CourseErrorCode.SAVE_IN_PROGRESS);
+		}
+	}
+
 	public boolean tryAcquireShare(long memberId, long courseId, UUID requestKey) {
 		return tryAcquire(":course-share:" + memberId + ":" + courseId + ":" + requestKey);
 	}

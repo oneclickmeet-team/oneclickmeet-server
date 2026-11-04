@@ -9,6 +9,7 @@ import com.hsu.oneclickmeet.domain.course.entity.Course;
 import com.hsu.oneclickmeet.domain.course.entity.CourseShareRequest;
 import com.hsu.oneclickmeet.domain.course.entity.SharedCourse;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
+import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
 import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
 import com.hsu.oneclickmeet.domain.course.repository.CourseRequestLock;
 import com.hsu.oneclickmeet.domain.course.repository.CourseShareRequestRepository;
@@ -31,16 +32,19 @@ public class CourseShareService {
 	private static final Duration REPLAY_LIFETIME = Duration.ofHours(24);
 
 	private final CourseRepository courses;
+	private final CourseLibraryRepository courseLibraries;
 	private final SharedCourseRepository sharedCourses;
 	private final CourseShareRequestRepository shareRequests;
 	private final CourseRequestLock requestLock;
 	private final CoupleRepository couples;
 	private final Clock clock;
 
-	public CourseShareService(CourseRepository courses, SharedCourseRepository sharedCourses,
+	public CourseShareService(CourseRepository courses, CourseLibraryRepository courseLibraries,
+			SharedCourseRepository sharedCourses,
 			CourseShareRequestRepository shareRequests, CourseRequestLock requestLock, CoupleRepository couples,
 			@Qualifier("coupleClock") Clock clock) {
 		this.courses = courses;
+		this.courseLibraries = courseLibraries;
 		this.sharedCourses = sharedCourses;
 		this.shareRequests = shareRequests;
 		this.requestLock = requestLock;
@@ -50,13 +54,17 @@ public class CourseShareService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CourseShareResponse share(long memberId, long sourceCourseId, UUID requestKey) {
-		Course source = courses.findOwnedCourse(memberId, sourceCourseId)
-				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
+		requireSourceOwnership(memberId, sourceCourseId);
 		boolean acquired = requestLock.tryAcquireShare(memberId, sourceCourseId, requestKey);
 		Couple couple = requireConnectedCouple(memberId, acquired);
 		if (!acquired) {
 			throw new BusinessException(CourseErrorCode.SHARE_IN_PROGRESS);
 		}
+
+		// Keep the original stable while copying its places and menus.
+		Course source = courses.findOwnedCourseForUpdate(memberId, sourceCourseId)
+				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
+		requireSourceOwnership(memberId, sourceCourseId);
 
 		var previous = shareRequests.findByMemberIdAndSourceCourseIdAndRequestKey(memberId, sourceCourseId, requestKey);
 		if (previous.isPresent() && previous.get().isReplayable(clock.instant())) {
@@ -76,6 +84,12 @@ public class CourseShareService {
 		request.complete(shared.getId(), clock.instant().plus(REPLAY_LIFETIME));
 		shareRequests.save(request);
 		return new CourseShareResponse(shared.getId(), sourceCourseId);
+	}
+
+	private void requireSourceOwnership(long memberId, long sourceCourseId) {
+		if (!courseLibraries.existsByMemberIdAndCourse_Id(memberId, sourceCourseId)) {
+			throw new BusinessException(CourseErrorCode.NOT_FOUND);
+		}
 	}
 
 	private Couple requireConnectedCouple(long memberId, boolean lock) {
