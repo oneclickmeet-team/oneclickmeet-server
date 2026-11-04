@@ -55,14 +55,15 @@ class CourseRepositoryTest {
     @DisplayName("코스 저장시 장소와 메뉴를 함께 저장하고 재조회한다.")
     void 장소와_메뉴를_함께_저장() {
         //given
-        Course course = Course.create("연남 데이트 코스");
-        CoursePlace place = CoursePlace.create(course, "파스타 가게", 1);
-        place.addMemo("창가 자리 예약하기");
-
-        CoursePlaceMenu pasta = CoursePlaceMenu.create(place, "파스타", 12000, 1);
-        pasta.isSelected();
-
-        CoursePlaceMenu.create(place, "스테이크", 43000, 2);
+		Course course = Course.create("연남 데이트 코스", List.of(
+				new Course.PlaceInput(null, "파스타 가게", 1, List.of(
+						new Course.MenuInput("파스타", 12000, 1, false),
+						new Course.MenuInput("스테이크", 43000, 2, false)
+				))
+		));
+		CoursePlace place = course.getPlaces().getFirst();
+		place.addMemo("창가 자리 예약하기");
+		place.getMenuList().getFirst().isSelected();
 
         //when
         Course savedCourse = courseRepository.save(course);
@@ -109,9 +110,10 @@ class CourseRepositoryTest {
     @DisplayName("장소가 여러개일 때 조회시 순서대로 정렬된다")
     void 장소_조회_정렬() {
         //given
-        Course course = Course.create("연남 데이트");
-        CoursePlace place1 = CoursePlace.create(course, "연남 파스타", 1);
-        CoursePlace place2 = CoursePlace.create(course, "홍대 파스타", 2);
+		Course course = Course.create("연남 데이트", List.of(
+				new Course.PlaceInput(null, "연남 파스타", 1, List.of()),
+				new Course.PlaceInput(null, "홍대 파스타", 2, List.of())
+		));
 
         //when
 
@@ -143,11 +145,12 @@ class CourseRepositoryTest {
     @DisplayName("메뉴가 여러개인 경우 순서대로 정렬되어 조회된다")
     void 메뉴_조회_정렬() {
         //given
-        Course course = Course.create("연남 데이트 코스");
-        CoursePlace place = CoursePlace.create(course, "파스타 가게", 1);
-
-        CoursePlaceMenu.create(place, "파스타", 12000, 2);
-        CoursePlaceMenu.create(place, "스테이크", 43000, 1);
+		Course course = Course.create("연남 데이트 코스", List.of(
+				new Course.PlaceInput(null, "파스타 가게", 1, List.of(
+						new Course.MenuInput("파스타", 12000, 2, false),
+						new Course.MenuInput("스테이크", 43000, 1, false)
+				))
+		));
 
         //when
         Course savedCourse = courseRepository.save(course);

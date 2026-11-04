@@ -10,7 +10,6 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -41,21 +40,25 @@ public class Course extends BaseEntity {
     @OneToMany(mappedBy = "course")
     private List<SharedCourse> sharedCourses = new ArrayList<>();
 
-    //=== Constructor ===
+	private Course(String name) {
+		this.name = name;
+	}
 
-    @Builder(access = AccessLevel.PRIVATE)
-    private Course(String name) {
-        this.name = name;
-    }
+	public static Course create(String name) {
+		return create(name, List.of());
+	}
 
-    public static Course create(String name) {
-        return Course.builder()
-                .name(name)
-                .build();
-    }
+	public static Course create(String name, List<PlaceInput> places) {
+		Course course = new Course(name);
+		for (PlaceInput place : places) {
+			course.places.add(new CoursePlace(course, place));
+		}
+		return course;
+	}
 
-    //=== Domin Method ===
+	public record PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus) {
+	}
 
-    //TODO: Course Create 메서드를 통해서 한번에 장소와 메뉴가 생성될 수 있도록 메서드 작성
-
+	public record MenuInput(String name, Integer price, Integer position, boolean selected) {
+	}
 }

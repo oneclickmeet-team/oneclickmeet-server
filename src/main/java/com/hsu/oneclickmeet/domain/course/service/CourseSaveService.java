@@ -3,8 +3,6 @@ package com.hsu.oneclickmeet.domain.course.service;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.entity.Course;
 import com.hsu.oneclickmeet.domain.course.entity.CourseLibrary;
-import com.hsu.oneclickmeet.domain.course.entity.CoursePlace;
-import com.hsu.oneclickmeet.domain.course.entity.CoursePlaceMenu;
 import com.hsu.oneclickmeet.domain.course.entity.CourseSaveRequest;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
@@ -25,7 +23,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -64,19 +64,20 @@ public class CourseSaveService {
 	}
 
 	private Course buildCourse(long memberId, CreateCourseRequest request, CoursePlaceLookup placeLookup) {
-		Course course = Course.create(request.courseName());
+		List<Course.PlaceInput> places = new ArrayList<>();
 		int visitOrder = 1;
 		for (var placeRequest : request.places()) {
 			long placeId = placeRequest.placeId();
 			String name = placeLookup.findPlaceName(memberId, placeId)
 					.orElseThrow(() -> new BusinessException(CourseErrorCode.SOURCE_PLACE_NOT_FOUND));
-			CoursePlace place = CoursePlace.create(course, placeId, name, visitOrder++);
+			List<Course.MenuInput> menus = new ArrayList<>();
 			int menuOrder = 1;
 			for (var menu : placeRequest.menuList()) {
-				CoursePlaceMenu.create(place, menu.menuName(), menu.price(), menuOrder++, menu.selected());
+				menus.add(new Course.MenuInput(menu.menuName(), menu.price(), menuOrder++, menu.selected()));
 			}
+			places.add(new Course.PlaceInput(placeId, name, visitOrder++, menus));
 		}
-		return course;
+		return Course.create(request.courseName(), places);
 	}
 
 	private String fingerprint(CreateCourseRequest request) {
