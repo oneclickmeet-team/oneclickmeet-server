@@ -13,11 +13,11 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -52,43 +52,19 @@ public class CoursePlace extends BaseEntity {
     @OrderBy("position asc ")
 	private List<CoursePlaceMenu> menuList = new ArrayList<>();
 
-    //=== Constroctor ===
+	CoursePlace(Course course, Course.PlaceInput input) {
+		this.course = course;
+		this.originalPlaceId = input.originalPlaceId();
+		this.name = input.name();
+		this.position = input.position();
+		for (Course.MenuInput menu : input.menus()) {
+			menuList.add(new CoursePlaceMenu(this, menu));
+		}
+	}
 
-    @Builder(access = AccessLevel.PRIVATE)
-    private CoursePlace(Course course, Long originalPlaceId, String name, String memo, Integer position) {
-        this.course = course;
-        this.originalPlaceId = originalPlaceId;
-        this.name = name;
-        this.memo = memo;
-        this.position = position;
-    }
-
-    public static CoursePlace create(Course course, String name, Integer position) {
-        return createPlace(course, null, name, position);
-    }
-
-    public static CoursePlace create(Course course, long originalPlaceId, String name, Integer position) {
-        return createPlace(course, originalPlaceId, name, position);
-    }
-
-    private static CoursePlace createPlace(Course course, Long originalPlaceId, String name, Integer position) {
-        CoursePlace place = CoursePlace.builder()
-                .course(course)
-                .originalPlaceId(originalPlaceId)
-                .name(name)
-                .position(position)
-                .build();
-
-        place.connectCourse(course);
-        return place;
-    }
-
-    //=== 연관관계 메서드 ===
-
-    private void connectCourse(Course course) {
-        this.course = course;
-        course.getPlaces().add(this);
-    }
+	public List<CoursePlaceMenu> getMenuList() {
+		return Collections.unmodifiableList(menuList);
+	}
 
     //=== 도메인 메서드 ===
 

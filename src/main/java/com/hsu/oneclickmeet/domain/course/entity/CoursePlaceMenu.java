@@ -10,7 +10,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -42,39 +41,13 @@ public class CoursePlaceMenu extends BaseEntity {
 	private CoursePlace place;
 
 
-    //=== Constroctor ===
-
-    @Builder(access = AccessLevel.PRIVATE)
-    private CoursePlaceMenu(CoursePlace place, String name, Integer price, Boolean selected, Integer position) {
-        this.place = place;
-        this.name = name;
-        this.price = price;
-        this.selected = selected;
-        this.position = position;
-    }
-
-    public static CoursePlaceMenu create(CoursePlace place, String name, Integer price, Integer position) {
-        return create(place, name, price, position, false);
-    }
-
-    public static CoursePlaceMenu create(CoursePlace place, String name, Integer price, Integer position, boolean selected) {
-        CoursePlaceMenu menu = CoursePlaceMenu.builder()
-                .place(place)
-                .name(name)
-                .price(price)
-                .selected(selected)
-                .position(position)
-                .build();
-
-        menu.connectPlace(place);
-        return menu;
-    }
-
-    //=== 연관관계 메서드 ===
-    private void connectPlace(CoursePlace place) {
-        this.place = place;
-        place.getMenuList().add(this);
-    }
+	CoursePlaceMenu(CoursePlace place, Course.MenuInput input) {
+		this.place = place;
+		this.name = input.name();
+		this.price = input.price();
+		this.selected = input.selected();
+		this.position = input.position();
+	}
 
     //=== Domin Method ===
 
