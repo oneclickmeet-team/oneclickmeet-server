@@ -57,12 +57,12 @@ public record CreateCourseRequest(
 		}
 	}
 
-	private static <T> List<T> copyList(List<T> values) {
+	static <T> List<T> copyList(List<T> values) {
 		// Preserve null elements so Bean Validation can report their indices.
 		return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));
 	}
 
-	private static String stripName(String name) {
+	static String stripName(String name) {
 		if (name == null) {
 			return null;
 		}

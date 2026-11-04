@@ -18,7 +18,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Entity
@@ -48,7 +50,7 @@ public class CoursePlace extends BaseEntity {
     @JoinColumn(name = "course_id")
     private Course course;
 
-	@OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST)
+	@OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST, orphanRemoval = true)
     @OrderBy("position asc ")
 	private List<CoursePlaceMenu> menuList = new ArrayList<>();
 
@@ -64,6 +66,27 @@ public class CoursePlace extends BaseEntity {
 
 	public List<CoursePlaceMenu> getMenuList() {
 		return Collections.unmodifiableList(menuList);
+	}
+
+	void replaceContents(int position, List<Course.MenuChange> changes) {
+		Map<Long, CoursePlaceMenu> existingMenus = new HashMap<>();
+		menuList.forEach(menu -> existingMenus.put(menu.getId(), menu));
+		List<CoursePlaceMenu> updatedMenus = new ArrayList<>(changes.size());
+		int menuOrder = 1;
+		for (Course.MenuChange change : changes) {
+			var input = new Course.MenuInput(change.name(), change.price(), menuOrder++, change.selected());
+			CoursePlaceMenu menu;
+			if (change.menuId() == null) {
+				menu = new CoursePlaceMenu(this, input);
+			} else {
+				menu = Objects.requireNonNull(existingMenus.get(change.menuId()));
+				menu.changeDetails(input);
+			}
+			updatedMenus.add(menu);
+		}
+		this.position = position;
+		menuList.clear();
+		menuList.addAll(updatedMenus);
 	}
 
     //=== 도메인 메서드 ===

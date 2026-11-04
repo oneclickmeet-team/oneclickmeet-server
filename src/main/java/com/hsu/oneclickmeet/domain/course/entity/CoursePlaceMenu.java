@@ -43,6 +43,10 @@ public class CoursePlaceMenu extends BaseEntity {
 
 	CoursePlaceMenu(CoursePlace place, Course.MenuInput input) {
 		this.place = place;
+		changeDetails(input);
+	}
+
+	void changeDetails(Course.MenuInput input) {
 		this.name = input.name();
 		this.price = input.price();
 		this.selected = input.selected();
