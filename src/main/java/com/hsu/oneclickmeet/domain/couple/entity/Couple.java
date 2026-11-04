@@ -79,6 +79,13 @@ public class Couple {
 		return status == CoupleStatus.GRACE && now.isBefore(graceEndsAt);
 	}
 
+	public boolean endGrace(Instant now) {
+		if (status == CoupleStatus.GRACE && !now.isBefore(graceEndsAt)) {
+			status = CoupleStatus.ENDED;
+		}
+		return status == CoupleStatus.ENDED;
+	}
+
 	public void reconnect(Instant now) {
 		if (status != CoupleStatus.GRACE) {
 			throw new BusinessException(CoupleErrorCode.STATE_CONFLICT);

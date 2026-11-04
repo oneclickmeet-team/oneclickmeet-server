@@ -1,19 +1,13 @@
 package com.hsu.oneclickmeet.domain.course.service;
 
-import com.hsu.oneclickmeet.domain.comment.service.CommentArchiveService;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
 import com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
-import com.hsu.oneclickmeet.domain.course.entity.CourseLibrary;
 import com.hsu.oneclickmeet.domain.course.entity.SharedCourse;
-import com.hsu.oneclickmeet.domain.course.entity.SharedCourseCancellationCopy;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
-import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
-import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseCancellationCopyRepository;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
-import com.hsu.oneclickmeet.domain.memo.service.MemoTransferService;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -29,24 +23,17 @@ public class SharedCourseCancellationService {
 
 	private final SharedCourseRepository sharedCourses;
 	private final CoupleRepository couples;
-	private final CourseRepository courses;
-	private final CourseLibraryRepository libraries;
 	private final SharedCourseCancellationCopyRepository cancellationCopies;
-	private final MemoTransferService memoTransfer;
-	private final CommentArchiveService commentArchive;
+	private final SharedCourseCopyService copyService;
 	private final Clock clock;
 
 	public SharedCourseCancellationService(SharedCourseRepository sharedCourses, CoupleRepository couples,
-			CourseRepository courses, CourseLibraryRepository libraries,
-			SharedCourseCancellationCopyRepository cancellationCopies, MemoTransferService memoTransfer,
-			CommentArchiveService commentArchive, @Qualifier("coupleClock") Clock clock) {
+			SharedCourseCancellationCopyRepository cancellationCopies, SharedCourseCopyService copyService,
+			@Qualifier("coupleClock") Clock clock) {
 		this.sharedCourses = sharedCourses;
 		this.couples = couples;
-		this.courses = courses;
-		this.libraries = libraries;
 		this.cancellationCopies = cancellationCopies;
-		this.memoTransfer = memoTransfer;
-		this.commentArchive = commentArchive;
+		this.copyService = copyService;
 		this.clock = clock;
 	}
 
@@ -76,18 +63,8 @@ public class SharedCourseCancellationService {
 		}
 
 		SharedCourse shared = current.get();
-		long firstCopyId = savePersonalCopy(shared, couple.getFirstMemberId());
-		long secondCopyId = savePersonalCopy(shared, couple.getSecondMemberId());
-		commentArchive.copyForUnshare(sharedCourseId, firstCopyId, secondCopyId, now);
+		copyService.copyForMembers(shared, couple, now);
 		sharedCourses.delete(shared);
-	}
-
-	private long savePersonalCopy(SharedCourse shared, long memberId) {
-		var copy = courses.save(shared.getCourse().copyContents());
-		libraries.save(CourseLibrary.create(copy, memberId));
-		cancellationCopies.save(new SharedCourseCancellationCopy(copy.getId(), shared.getId(), memberId));
-		memoTransfer.copyForUnshare(shared.getId(), memberId, copy.getId());
-		return copy.getId();
 	}
 
 	private void requireCompletedCancellation(long memberId, long sharedCourseId) {

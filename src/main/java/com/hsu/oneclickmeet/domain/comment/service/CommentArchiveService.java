@@ -18,7 +18,7 @@ public class CommentArchiveService {
 
 	/**
 	 * The caller holds the source couple lock in a READ_COMMITTED transaction and supplies
-	 * the two members' fresh copy IDs, or the same IDs on retry, before closing shared access.
+	 * the two members' fresh copy IDs, or the same IDs on retry.
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void copyForUnshare(long sharedCourseId, long firstCourseId, long secondCourseId, Instant archivedAt) {

@@ -2,12 +2,14 @@ package com.hsu.oneclickmeet.domain.couple.repository;
 
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface CoupleRepository extends JpaRepository<Couple, Long> {
@@ -48,4 +50,16 @@ public interface CoupleRepository extends JpaRepository<Couple, Long> {
 		where c.id = :coupleId and (c.firstMemberId = :memberId or c.secondMemberId = :memberId)
 		""")
 	Optional<Couple> findMemberCoupleForUpdate(@Param("memberId") long memberId, @Param("coupleId") long coupleId);
+
+	@Query("""
+		select c.id from Couple c
+		where c.id > :afterId and c.status = com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus.GRACE
+		  and c.graceEndsAt <= :now
+		order by c.id
+		""")
+	List<Long> findExpiredGraceIds(@Param("now") Instant now, @Param("afterId") long afterId, Pageable limit);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select c from Couple c where c.id = :coupleId")
+	Optional<Couple> findByIdForUpdate(@Param("coupleId") long coupleId);
 }

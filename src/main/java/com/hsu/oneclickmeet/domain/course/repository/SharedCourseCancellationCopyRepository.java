@@ -5,5 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SharedCourseCancellationCopyRepository extends JpaRepository<SharedCourseCancellationCopy, Long> {
 
+	boolean existsBySharedCourseId(long sharedCourseId);
+
 	boolean existsBySharedCourseIdAndMemberId(long sharedCourseId, long memberId);
 }

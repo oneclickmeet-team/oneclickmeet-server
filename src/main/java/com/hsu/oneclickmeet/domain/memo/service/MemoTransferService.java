@@ -16,7 +16,7 @@ public class MemoTransferService {
 	/**
 	 * Relinks the recipient's existing memo to their new personal copy.
 	 * The caller holds the source couple lock in a READ_COMMITTED transaction and supplies
-	 * the recipient's fresh copy ID, or the same ID on retry, before closing shared access.
+	 * the recipient's fresh copy ID, or the same ID on retry.
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void copyForUnshare(long sharedCourseId, long memberId, long personalCourseId) {

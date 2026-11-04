@@ -22,6 +22,16 @@ public interface SharedCourseRepository extends JpaRepository<SharedCourse, Long
 	@Query("select shared.couple.id from SharedCourse shared where shared.id = :sharedCourseId")
 	Optional<Long> findCoupleId(@Param("sharedCourseId") long sharedCourseId);
 
+	// Both receipts commit in the same transaction as the two recipients' personal copies.
+	@Query("""
+			select shared.id as sharedCourseId, shared.couple.id as coupleId from SharedCourse shared
+			where shared.couple.status = com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus.ENDED
+			and shared.id > :afterId
+			and not exists (select receipt.courseId from SharedCourseCancellationCopy receipt where receipt.sharedCourseId = shared.id)
+			order by shared.id
+			""")
+	List<GraceCopyCandidate> findPendingGraceCopies(@Param("afterId") long afterId, Pageable limit);
+
 	@Query("""
 			select shared.id from SharedCourse shared
 			where shared.couple.id = :coupleId and shared.id in :sharedCourseIds
@@ -45,5 +55,10 @@ public interface SharedCourseRepository extends JpaRepository<SharedCourse, Long
 		String getCourseName();
 		int getPlaceCount();
 		Instant getSharedAt();
+	}
+
+	interface GraceCopyCandidate {
+		long getSharedCourseId();
+		long getCoupleId();
 	}
 }
