@@ -26,13 +26,22 @@ public class CourseLibrary extends BaseEntity {
 	@Column(nullable = false)
 	private String title;
 
+	@Column(name = "member_id")
+	private Long memberId;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "course_id")
 	private Course course;
 
-    //=== Constroctor ===
+	private CourseLibrary(Course course, long memberId) {
+		this.course = course;
+		this.memberId = memberId;
+		this.title = course.getName();
+	}
 
-
-    //=== Domin Method ===
-
+	public static CourseLibrary create(Course course, long memberId) {
+		CourseLibrary library = new CourseLibrary(course, memberId);
+		course.getLibraries().add(library);
+		return library;
+	}
 }

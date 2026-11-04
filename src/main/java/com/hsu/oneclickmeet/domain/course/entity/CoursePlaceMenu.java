@@ -54,11 +54,15 @@ public class CoursePlaceMenu extends BaseEntity {
     }
 
     public static CoursePlaceMenu create(CoursePlace place, String name, Integer price, Integer position) {
+        return create(place, name, price, position, false);
+    }
+
+    public static CoursePlaceMenu create(CoursePlace place, String name, Integer price, Integer position, boolean selected) {
         CoursePlaceMenu menu = CoursePlaceMenu.builder()
                 .place(place)
                 .name(name)
                 .price(price)
-                .selected(false)
+                .selected(selected)
                 .position(position)
                 .build();
 

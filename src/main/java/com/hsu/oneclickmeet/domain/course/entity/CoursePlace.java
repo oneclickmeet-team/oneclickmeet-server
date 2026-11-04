@@ -32,6 +32,9 @@ public class CoursePlace extends BaseEntity {
 	@Column(name = "place_id")
 	private Long id;
 
+	@Column(name = "original_place_id")
+	private Long originalPlaceId;
+
 	@Column(name = "place_name", nullable = false)
 	private String name;
 
@@ -52,17 +55,26 @@ public class CoursePlace extends BaseEntity {
     //=== Constroctor ===
 
     @Builder(access = AccessLevel.PRIVATE)
-    private CoursePlace(Course course, String name, String memo, Integer position) {
+    private CoursePlace(Course course, Long originalPlaceId, String name, String memo, Integer position) {
         this.course = course;
+        this.originalPlaceId = originalPlaceId;
         this.name = name;
         this.memo = memo;
         this.position = position;
     }
 
     public static CoursePlace create(Course course, String name, Integer position) {
+        return createPlace(course, null, name, position);
+    }
 
+    public static CoursePlace create(Course course, long originalPlaceId, String name, Integer position) {
+        return createPlace(course, originalPlaceId, name, position);
+    }
+
+    private static CoursePlace createPlace(Course course, Long originalPlaceId, String name, Integer position) {
         CoursePlace place = CoursePlace.builder()
                 .course(course)
+                .originalPlaceId(originalPlaceId)
                 .name(name)
                 .position(position)
                 .build();
