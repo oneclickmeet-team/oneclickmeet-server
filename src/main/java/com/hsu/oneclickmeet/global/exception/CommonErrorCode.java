@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum CommonErrorCode implements ErrorCode {
 	BAD_REQUEST(HttpStatus.BAD_REQUEST, "COMMON-0400", "입력값을 확인해 주세요."),
+	UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "COMMON-0401", "로그인이 필요합니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON-0500", "요청 처리 중 오류가 발생했습니다.");
 
 	private final HttpStatus status;
