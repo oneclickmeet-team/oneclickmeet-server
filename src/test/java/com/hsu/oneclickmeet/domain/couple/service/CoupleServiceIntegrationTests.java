@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -27,6 +28,8 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose.CONNECT;
@@ -52,6 +55,9 @@ class CoupleServiceIntegrationTests {
 	private CoupleDisconnectionService disconnectionService;
 
 	@Autowired
+	private CoupleGraceExpirationService graceExpiration;
+
+	@MockitoSpyBean
 	private CoupleAccessService access;
 
 	@Autowired
@@ -439,6 +445,54 @@ class CoupleServiceIntegrationTests {
 		assertBusinessError("COUPLE-0410",
 			() -> coupleService.reconnect(ACCEPTOR, coupleId, UUID.randomUUID(), invitation.invitationCode()));
 		assertThat(couples.findById(coupleId).orElseThrow().getStatus()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	@Test
+	void keepsAReconnectionConfirmedBeforeTheDeadlineWhenExpirationWaitsForItsLock() throws Exception {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		Instant graceEndsAt = disconnect(coupleId);
+		var currentTime = new AtomicReference<>(graceEndsAt.minusNanos(1_000));
+		var confirmingThread = new AtomicReference<Thread>();
+		var reconnectionConfirmed = new CountDownLatch(1);
+		var releaseReconnection = new CountDownLatch(1);
+		var expirationStarted = new CountDownLatch(1);
+		given(clock.instant()).willAnswer(invocation -> {
+			Instant sampledTime = currentTime.get();
+			if (confirmingThread.compareAndSet(Thread.currentThread(), null)) {
+				reconnectionConfirmed.countDown();
+				awaitRelease(releaseReconnection);
+			}
+			return sampledTime;
+		});
+		String code = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		CoupleAccessService accessSpy = AopTestUtils.getUltimateTargetObject(access);
+		doAnswer(invocation -> {
+			Couple locked = (Couple) invocation.callRealMethod();
+			confirmingThread.set(Thread.currentThread());
+			return locked;
+		}).when(accessSpy).requireMemberCoupleForUpdate(ACCEPTOR, coupleId);
+
+		try (var executor = Executors.newFixedThreadPool(2)) {
+			try {
+				var reconnection = executor.submit(() -> coupleService.reconnect(ACCEPTOR, coupleId, UUID.randomUUID(), code));
+				assertThat(reconnectionConfirmed.await(5, TimeUnit.SECONDS)).isTrue();
+				currentTime.set(graceEndsAt);
+				var expiration = executor.submit(() -> {
+					expirationStarted.countDown();
+					return graceExpiration.endGrace(coupleId);
+				});
+				assertThat(expirationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThatThrownBy(() -> expiration.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+
+				releaseReconnection.countDown();
+				assertThat(reconnection.get(5, TimeUnit.SECONDS))
+					.isEqualTo(new ConnectionResponse(coupleId, CoupleStatus.CONNECTED));
+				assertThat(expiration.get(5, TimeUnit.SECONDS)).isFalse();
+			} finally {
+				releaseReconnection.countDown();
+			}
+		}
+		assertThat(couples.findById(coupleId).orElseThrow().getStatus()).isEqualTo(CoupleStatus.CONNECTED);
 	}
 
 	@Test
