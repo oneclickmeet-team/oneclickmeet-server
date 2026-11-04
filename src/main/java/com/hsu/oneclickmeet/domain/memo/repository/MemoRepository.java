@@ -32,6 +32,14 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 	boolean existsByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
 
 	@Modifying
+	@Query("""
+			update Memo memo set memo.targetType = :copyType, memo.targetId = :copyId
+			where memo.authorId = :authorId and memo.targetType = :sourceType and memo.targetId = :sourceId
+			""")
+	void moveToCopy(@Param("authorId") long authorId, @Param("sourceType") MemoTargetType sourceType,
+			@Param("sourceId") long sourceId, @Param("copyType") MemoTargetType copyType, @Param("copyId") long copyId);
+
+	@Modifying
 	@Query("update Memo memo set memo.content = :content, memo.updatedAt = :updatedAt where memo.id = :id")
 	void updateContent(@Param("id") long id, @Param("content") String content, @Param("updatedAt") Instant updatedAt);
 
