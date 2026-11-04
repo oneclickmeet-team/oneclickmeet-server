@@ -21,6 +21,12 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<Memo> findForUpdateByIdAndAuthorId(long id, long authorId);
 
+	@Query("""
+			select memo.targetType as type, memo.targetId as id from Memo memo
+			where memo.id = :id and memo.authorId = :authorId
+			""")
+	Optional<Target> findOwnedTarget(@Param("id") long id, @Param("authorId") long authorId);
+
 	Optional<Memo> findByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
 
 	boolean existsByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
@@ -38,4 +44,9 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 			""")
 	List<Memo> findPage(@Param("authorId") long authorId, @Param("beforeCreatedAt") Instant beforeCreatedAt,
 			@Param("beforeId") Long beforeId, Pageable limit);
+
+	interface Target {
+		MemoTargetType getType();
+		long getId();
+	}
 }

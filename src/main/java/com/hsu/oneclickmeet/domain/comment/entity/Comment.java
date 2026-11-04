@@ -65,4 +65,16 @@ public class Comment {
 		this.content = content;
 		this.updatedAt = now;
 	}
+
+	public Comment archiveForCourse(long courseId, Instant archivedAt) {
+		Comment archived = new Comment();
+		archived.targetType = CommentTargetType.COURSE;
+		archived.targetId = courseId;
+		archived.authorMemberId = authorMemberId;
+		archived.content = content;
+		archived.createdAt = createdAt;
+		archived.updatedAt = updatedAt;
+		archived.archivedAt = archivedAt;
+		return archived;
+	}
 }

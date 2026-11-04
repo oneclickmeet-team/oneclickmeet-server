@@ -13,6 +13,8 @@ import java.util.Optional;
 
 public interface CommentRepository extends JpaRepository<Comment, Long> {
 
+	List<Comment> findAllByTargetTypeAndTargetIdOrderByCreatedAtAscIdAsc(CommentTargetType targetType, long targetId);
+
 	@Query("""
 			select c from Comment c
 			where c.targetType = :targetType and c.targetId = :targetId
