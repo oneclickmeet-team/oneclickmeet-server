@@ -78,7 +78,7 @@ public class CourseShareService {
 			throw new BusinessException(CourseErrorCode.ALREADY_SHARED);
 		}
 
-		Course snapshot = courses.save(source.copyForSharing());
+		Course snapshot = courses.save(source.copyContents());
 		SharedCourse shared = sharedCourses.save(SharedCourse.create(snapshot, couple, sourceCourseId, memberId));
 		CourseShareRequest request = previous.orElseGet(() -> new CourseShareRequest(memberId, sourceCourseId, requestKey));
 		request.complete(shared.getId(), clock.instant().plus(REPLAY_LIFETIME));

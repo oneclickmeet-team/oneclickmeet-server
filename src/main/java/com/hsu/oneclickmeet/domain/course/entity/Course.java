@@ -95,7 +95,7 @@ public class Course extends BaseEntity {
 		places.remove(place);
 	}
 
-	public Course copyForSharing() {
+	public Course copyContents() {
 		List<PlaceInput> copy = places.stream()
 				.map(place -> new PlaceInput(place.getOriginalPlaceId(), place.getName(), place.getPosition(),
 						place.getMenuList().stream()

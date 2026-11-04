@@ -4,6 +4,7 @@ import com.hsu.oneclickmeet.domain.course.dto.request.UpdateSharedCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.response.SharedCourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.SharedCourseListResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.SharedCourseUpdateResponse;
+import com.hsu.oneclickmeet.domain.course.service.SharedCourseCancellationService;
 import com.hsu.oneclickmeet.domain.course.service.SharedCourseReadService;
 import com.hsu.oneclickmeet.domain.course.service.SharedCourseUpdateService;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
@@ -13,7 +14,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,6 +39,7 @@ public class SharedCourseController {
 
 	private final SharedCourseReadService sharedCourseReadService;
 	private final SharedCourseUpdateService sharedCourseUpdateService;
+	private final SharedCourseCancellationService sharedCourseCancellationService;
 
 	@GetMapping("/couples/me/courses")
 	public ApiResponse<SharedCourseListResponse> listCourses(@AuthenticationPrincipal Long memberId,
@@ -62,6 +66,14 @@ public class SharedCourseController {
 			@Valid @RequestBody UpdateSharedCourseRequest request) {
 		return ApiResponse.success(sharedCourseUpdateService.update(requireMemberId(memberId),
 				parseCourseId(sharedCourseId), UUID.fromString(idempotencyKey), request));
+	}
+
+	@DeleteMapping("/shared-courses/{sharedCourseId}")
+	public ResponseEntity<Void> cancelSharing(@AuthenticationPrincipal Long memberId,
+			@PathVariable("sharedCourseId")
+			@Pattern(regexp = "0*[1-9][0-9]*", message = "sharedCourseId는 양의 정수여야 합니다.") String sharedCourseId) {
+		sharedCourseCancellationService.cancel(requireMemberId(memberId), parseCourseId(sharedCourseId));
+		return ResponseEntity.noContent().build();
 	}
 
 	private long parseCourseId(String courseId) {

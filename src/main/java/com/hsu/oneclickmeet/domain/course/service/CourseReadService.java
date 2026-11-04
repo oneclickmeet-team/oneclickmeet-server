@@ -34,7 +34,8 @@ public class CourseReadService {
 		boolean hasNext = summaries.size() > size;
 		var items = summaries.stream().limit(size)
 				.map(summary -> new CourseListResponse.Item(summary.getCourseId(), summary.getCourseName(),
-						summary.getPlaceCount(), null, Objects.requireNonNull(summary.getCreatedAt(), "Course has no creation timestamp")))
+						summary.getPlaceCount(), summary.getOriginSharedCourseId(),
+						Objects.requireNonNull(summary.getCreatedAt(), "Course has no creation timestamp")))
 				.toList();
 		String nextCursor = null;
 		if (hasNext) {
