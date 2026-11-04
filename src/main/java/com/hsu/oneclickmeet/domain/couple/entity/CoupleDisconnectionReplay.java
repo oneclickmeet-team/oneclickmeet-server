@@ -39,6 +39,12 @@ public class CoupleDisconnectionReplay {
 
 	private Instant replayUntil;
 
+	public CoupleDisconnectionReplay(long memberId, long coupleId, String requestKey) {
+		this.memberId = memberId;
+		this.coupleId = coupleId;
+		this.requestKey = requestKey;
+	}
+
 	public boolean isReplayable(Instant now) {
 		return replayUntil != null && now.isBefore(replayUntil);
 	}

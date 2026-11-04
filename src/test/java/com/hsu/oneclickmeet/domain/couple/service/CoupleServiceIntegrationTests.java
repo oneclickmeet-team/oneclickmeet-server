@@ -3,6 +3,7 @@ package com.hsu.oneclickmeet.domain.couple.service;
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleDisconnectionRequestLock;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -32,6 +34,7 @@ import static com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose.RECONN
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -59,6 +62,9 @@ class CoupleServiceIntegrationTests {
 
 	@MockitoBean(name = "coupleClock")
 	private Clock clock;
+
+	@MockitoSpyBean
+	private CoupleDisconnectionRequestLock disconnectionRequestLock;
 
 	@BeforeEach
 	void prepareMembers() {
@@ -311,6 +317,7 @@ class CoupleServiceIntegrationTests {
 		assertBusinessError("COUPLE-0404", () -> disconnectionService.disconnect(THIRD_MEMBER, coupleId, key, false));
 		assertBusinessError("COMMON-0400", () -> disconnectionService.disconnect(ISSUER, coupleId, key, true));
 		assertThat(coupleService.getMyCouple(ISSUER).couple().status()).isEqualTo(CoupleStatus.CONNECTED);
+		assertThat(countDisconnectionReplays(coupleId, key)).isZero();
 
 		var response = disconnectionService.disconnect(ISSUER, coupleId, key, false);
 		assertBusinessError("COUPLE-0409-03", () -> disconnectionService.disconnect(ISSUER, coupleId, key, true));
@@ -340,33 +347,52 @@ class CoupleServiceIntegrationTests {
 	}
 
 	@Test
-	void reportsAnInProgressDisconnectionWhileItsReplayRowIsLocked() throws Exception {
+	void rejectsAnOverlappingFirstDisconnectionBeforeAnyReplayIsStored() throws Exception {
 		long coupleId = createCouple(ISSUER, ACCEPTOR);
 		UUID key = UUID.randomUUID();
-		jdbc.update("insert into couple_disconnection_replays (member_id, couple_id, request_key) values (?, ?, ?)",
-			ISSUER, coupleId, key.toString());
-		var replayLocked = new CountDownLatch(1);
-		var releaseReplay = new CountDownLatch(1);
-		try (var executor = Executors.newFixedThreadPool(2)) {
+		var coupleLocked = new CountDownLatch(1);
+		var releaseCouple = new CountDownLatch(1);
+		var firstRequestLocked = new CountDownLatch(1);
+		doAnswer(invocation -> {
+			invocation.callRealMethod();
+			firstRequestLocked.countDown();
+			return null;
+		}).when(disconnectionRequestLock).acquire(ISSUER, coupleId, key);
+
+		assertThat(countDisconnectionReplays(coupleId, key)).isZero();
+		try (var executor = Executors.newFixedThreadPool(3)) {
 			try {
-				var lock = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-					jdbc.queryForObject("""
-						select id from couple_disconnection_replays
-						where member_id = ? and couple_id = ? and request_key = ? for update
-						""", Long.class, ISSUER, coupleId, key.toString());
-					replayLocked.countDown();
-					awaitRelease(releaseReplay);
+				var blocker = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+					jdbc.queryForObject("select id from couples where id = ? for update", Long.class, coupleId);
+					coupleLocked.countDown();
+					awaitRelease(releaseCouple);
 				}));
-				assertThat(replayLocked.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(coupleLocked.await(5, TimeUnit.SECONDS)).isTrue();
+				var first = executor.submit(() -> disconnectionService.disconnect(ISSUER, coupleId, key, false));
+				assertThat(firstRequestLocked.await(5, TimeUnit.SECONDS)).isTrue();
+
 				executor.submit(() -> assertBusinessError("COUPLE-0409-04",
 					() -> disconnectionService.disconnect(ISSUER, coupleId, key, false))).get(5, TimeUnit.SECONDS);
-				releaseReplay.countDown();
-				lock.get(5, TimeUnit.SECONDS);
+				assertThat(first.isDone()).isFalse();
+				assertThat(countDisconnectionReplays(coupleId, key)).isZero();
+
+				releaseCouple.countDown();
+				blocker.get(5, TimeUnit.SECONDS);
+				var response = first.get(5, TimeUnit.SECONDS);
+				assertThat(response.status()).isEqualTo(CoupleStatus.GRACE);
+				assertThat(countDisconnectionReplays(coupleId, key)).isOne();
+				assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false)).isEqualTo(response);
 			} finally {
-				releaseReplay.countDown();
+				releaseCouple.countDown();
 			}
 		}
-		assertThat(disconnectionService.disconnect(ISSUER, coupleId, key, false).status()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	private int countDisconnectionReplays(long coupleId, UUID key) {
+		return jdbc.queryForObject("""
+			select count(*) from couple_disconnection_replays
+			where member_id = ? and couple_id = ? and request_key = ?
+			""", Integer.class, ISSUER, coupleId, key.toString());
 	}
 
 	private long createCouple(long firstMember, long secondMember) {
