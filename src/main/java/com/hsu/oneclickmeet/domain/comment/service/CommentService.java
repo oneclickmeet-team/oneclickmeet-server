@@ -18,7 +18,7 @@ import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.ErrorCode;
-import com.hsu.oneclickmeet.global.jdbc.MysqlRequestLock;
+import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -45,13 +45,13 @@ public class CommentService {
 	private final SharedCourseRepository sharedCourses;
 	private final CoupleRepository couples;
 	private final CoupleMemberRepository members;
-	private final MysqlRequestLock requestLock;
+	private final MySqlTransactionLock requestLock;
 	private final JsonMapper jsonMapper;
 	private final Clock clock;
 
 	public CommentService(CommentRepository comments, CommentCreateRequestRepository replays,
 			CourseRepository courses, SharedCourseRepository sharedCourses, CoupleRepository couples,
-			CoupleMemberRepository members, MysqlRequestLock requestLock, JsonMapper jsonMapper,
+			CoupleMemberRepository members, MySqlTransactionLock requestLock, JsonMapper jsonMapper,
 			@Qualifier("coupleClock") Clock clock) {
 		this.comments = comments;
 		this.replays = replays;

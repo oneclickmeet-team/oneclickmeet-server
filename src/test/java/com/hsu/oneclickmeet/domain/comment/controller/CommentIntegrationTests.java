@@ -6,7 +6,7 @@ import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
 import com.hsu.oneclickmeet.domain.course.service.CourseSaveService;
 import com.hsu.oneclickmeet.domain.course.service.CourseShareService;
-import com.hsu.oneclickmeet.global.jdbc.MysqlRequestLock;
+import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +76,7 @@ class CommentIntegrationTests {
 	private CourseShareService courseShare;
 
 	@Autowired
-	private MysqlRequestLock requestLock;
+	private MySqlTransactionLock requestLock;
 
 	@Autowired
 	private PlatformTransactionManager transactionManager;

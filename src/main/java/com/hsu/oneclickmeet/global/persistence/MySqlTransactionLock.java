@@ -1,4 +1,4 @@
-package com.hsu.oneclickmeet.global.jdbc;
+package com.hsu.oneclickmeet.global.persistence;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ import java.sql.SQLException;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class MysqlRequestLock {
+public class MySqlTransactionLock {
 	private static final String LOCK_NAME = "SHA2(CONCAT(DATABASE(), ?), 256)";
 	private static final String ACQUIRE = "SELECT GET_LOCK(" + LOCK_NAME + ", 0)";
 	private static final String RELEASE = "SELECT RELEASE_LOCK(" + LOCK_NAME + ")";
