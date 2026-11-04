@@ -17,6 +17,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -59,6 +60,10 @@ public class CoursePlace extends BaseEntity {
 		for (Course.MenuInput menu : input.menus()) {
 			menuList.add(new CoursePlaceMenu(this, menu));
 		}
+	}
+
+	public List<CoursePlaceMenu> getMenuList() {
+		return Collections.unmodifiableList(menuList);
 	}
 
     //=== 도메인 메서드 ===

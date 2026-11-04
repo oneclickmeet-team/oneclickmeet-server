@@ -111,8 +111,8 @@ class CourseRepositoryTest {
     void 장소_조회_정렬() {
         //given
 		Course course = Course.create("연남 데이트", List.of(
-				new Course.PlaceInput(null, "연남 파스타", 1, List.of()),
-				new Course.PlaceInput(null, "홍대 파스타", 2, List.of())
+				new Course.PlaceInput(null, "홍대 파스타", 2, List.of()),
+				new Course.PlaceInput(null, "연남 파스타", 1, List.of())
 		));
 
         //when

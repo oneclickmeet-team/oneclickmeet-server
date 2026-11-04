@@ -14,6 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Entity
@@ -54,6 +55,10 @@ public class Course extends BaseEntity {
 			course.places.add(new CoursePlace(course, place));
 		}
 		return course;
+	}
+
+	public List<CoursePlace> getPlaces() {
+		return Collections.unmodifiableList(places);
 	}
 
 	public record PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus) {
