@@ -41,6 +41,10 @@ public class CourseRequestLock {
 		return tryAcquire(":course-share:" + memberId + ":" + courseId + ":" + requestKey);
 	}
 
+	public boolean tryAcquireSharedUpdate(long memberId, long sharedCourseId, UUID requestKey) {
+		return tryAcquire(":shared-course-update:" + memberId + ":" + sharedCourseId + ":" + requestKey);
+	}
+
 	private boolean tryAcquire(String key) {
 		if (!TransactionSynchronizationManager.isActualTransactionActive()
 				|| !TransactionSynchronizationManager.isSynchronizationActive()) {

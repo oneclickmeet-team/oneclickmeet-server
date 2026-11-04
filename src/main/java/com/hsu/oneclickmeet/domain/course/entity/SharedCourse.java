@@ -15,6 +15,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Entity
 @Getter
 @Table(name = "shared_course", uniqueConstraints = @UniqueConstraint(
@@ -45,6 +47,12 @@ public class SharedCourse extends BaseEntity {
 	@Column(name = "structure_version", nullable = false)
 	private long structureVersion;
 
+	@Column(name = "last_edited_by_member_id")
+	private Long lastEditedByMemberId;
+
+	@Column(name = "last_edited_at")
+	private Instant lastEditedAt;
+
 	private SharedCourse(Course course, Couple couple, long sourceCourseId, long sharedByMemberId) {
 		this.course = course;
 		this.couple = couple;
@@ -55,5 +63,13 @@ public class SharedCourse extends BaseEntity {
 
 	public static SharedCourse create(Course snapshot, Couple couple, long sourceCourseId, long sharedByMemberId) {
 		return new SharedCourse(snapshot, couple, sourceCourseId, sharedByMemberId);
+	}
+
+	public void recordEdit(long memberId, Instant editedAt, boolean structureChanged) {
+		this.lastEditedByMemberId = memberId;
+		this.lastEditedAt = editedAt;
+		if (structureChanged) {
+			structureVersion++;
+		}
 	}
 }

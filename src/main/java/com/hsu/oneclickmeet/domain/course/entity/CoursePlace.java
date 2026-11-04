@@ -89,6 +89,19 @@ public class CoursePlace extends BaseEntity {
 		menuList.addAll(updatedMenus);
 	}
 
+	public void changePosition(int position) {
+		this.position = position;
+	}
+
+	public void appendMenu(String name, int price, boolean selected, long editorId) {
+		int position = menuList.isEmpty() ? 1 : menuList.getLast().getPosition() + 1;
+		menuList.add(new CoursePlaceMenu(this, new Course.MenuInput(name, price, position, selected), editorId));
+	}
+
+	public void removeMenu(CoursePlaceMenu menu) {
+		menuList.remove(menu);
+	}
+
     //=== 도메인 메서드 ===
 
     public void addMemo(String memo) {

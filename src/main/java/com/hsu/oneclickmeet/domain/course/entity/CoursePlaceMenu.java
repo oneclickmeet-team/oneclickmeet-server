@@ -36,14 +36,22 @@ public class CoursePlaceMenu extends BaseEntity {
     @Column(name = "menu_selected", nullable = false)
     private Boolean selected;
 
+	@Column(name = "last_edited_by_member_id")
+	private Long lastEditedByMemberId;
+
     @ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "place_id")
 	private CoursePlace place;
 
 
 	CoursePlaceMenu(CoursePlace place, Course.MenuInput input) {
+		this(place, input, null);
+	}
+
+	CoursePlaceMenu(CoursePlace place, Course.MenuInput input, Long editorId) {
 		this.place = place;
 		changeDetails(input);
+		this.lastEditedByMemberId = editorId;
 	}
 
 	void changeDetails(Course.MenuInput input) {
@@ -51,6 +59,13 @@ public class CoursePlaceMenu extends BaseEntity {
 		this.price = input.price();
 		this.selected = input.selected();
 		this.position = input.position();
+	}
+
+	public void edit(String name, int price, boolean selected, long editorId) {
+		this.name = name;
+		this.price = price;
+		this.selected = selected;
+		this.lastEditedByMemberId = editorId;
 	}
 
     //=== Domin Method ===
