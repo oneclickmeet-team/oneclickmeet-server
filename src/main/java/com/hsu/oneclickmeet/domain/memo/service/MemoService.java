@@ -64,6 +64,10 @@ public class MemoService {
 		if (!locks.tryAcquire(":memo-create:" + memberId + ":" + idempotencyKey)) {
 			throw new BusinessException(MemoErrorCode.CREATE_IN_PROGRESS);
 		}
+		if (request.targetType() == MemoTargetType.SHARED_COURSE
+				&& !targetAccess.canAccessSharedCourseForWrite(memberId, request.targetId())) {
+			throw new BusinessException(CourseErrorCode.NOT_FOUND);
+		}
 		String requestHash = fingerprint(request);
 		var previous = replays.findByAuthorIdAndRequestKey(memberId, idempotencyKey);
 		if (previous.isPresent() && previous.get().isReplayable(clock.instant())) {
@@ -122,18 +126,18 @@ public class MemoService {
 		return toResponse(requireAccessibleMemo(memberId, memos.findByIdAndAuthorId(memoId, memberId)));
 	}
 
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public MemoResponse update(long memberId, long memoId, String content) {
-		Memo memo = requireAccessibleMemo(memberId, memos.findForUpdateByIdAndAuthorId(memoId, memberId));
+		Memo memo = requireWritableMemo(memberId, memoId);
 		Instant updatedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 		memos.updateContent(memoId, content, updatedAt);
 		return new MemoResponse(memoId, memo.getTargetType(), memo.getTargetId(), content,
 				memo.getCreatedAt(), updatedAt);
 	}
 
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void delete(long memberId, long memoId) {
-		memos.delete(requireAccessibleMemo(memberId, memos.findForUpdateByIdAndAuthorId(memoId, memberId)));
+		memos.delete(requireWritableMemo(memberId, memoId));
 	}
 
 	private Memo insert(long memberId, CreateMemoRequest request) {
@@ -166,6 +170,20 @@ public class MemoService {
 	private Memo requireAccessibleMemo(long memberId, Optional<Memo> found) {
 		return found.filter(memo -> targetAccess.canAccess(memberId, memo.getTargetType(), memo.getTargetId()))
 				.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
+	}
+
+	private Memo requireWritableMemo(long memberId, long memoId) {
+		// Resolve the target without loading the memo before locking the relationship.
+		var target = memos.findOwnedTarget(memoId, memberId)
+				.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
+		if (target.getType() == MemoTargetType.SHARED_COURSE) {
+			if (!targetAccess.canAccessSharedCourseForWrite(memberId, target.getId())) {
+				throw new BusinessException(MemoErrorCode.NOT_FOUND);
+			}
+			return memos.findForUpdateByIdAndAuthorId(memoId, memberId)
+					.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
+		}
+		return requireAccessibleMemo(memberId, memos.findForUpdateByIdAndAuthorId(memoId, memberId));
 	}
 
 	private static MemoResponse toResponse(Memo memo) {

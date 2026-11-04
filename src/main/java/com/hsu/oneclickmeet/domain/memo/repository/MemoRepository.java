@@ -21,9 +21,23 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<Memo> findForUpdateByIdAndAuthorId(long id, long authorId);
 
+	@Query("""
+			select memo.targetType as type, memo.targetId as id from Memo memo
+			where memo.id = :id and memo.authorId = :authorId
+			""")
+	Optional<Target> findOwnedTarget(@Param("id") long id, @Param("authorId") long authorId);
+
 	Optional<Memo> findByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
 
 	boolean existsByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
+
+	@Modifying
+	@Query("""
+			update Memo memo set memo.targetType = :copyType, memo.targetId = :copyId
+			where memo.authorId = :authorId and memo.targetType = :sourceType and memo.targetId = :sourceId
+			""")
+	void moveToCopy(@Param("authorId") long authorId, @Param("sourceType") MemoTargetType sourceType,
+			@Param("sourceId") long sourceId, @Param("copyType") MemoTargetType copyType, @Param("copyId") long copyId);
 
 	@Modifying
 	@Query("update Memo memo set memo.content = :content, memo.updatedAt = :updatedAt where memo.id = :id")
@@ -38,4 +52,9 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 			""")
 	List<Memo> findPage(@Param("authorId") long authorId, @Param("beforeCreatedAt") Instant beforeCreatedAt,
 			@Param("beforeId") Long beforeId, Pageable limit);
+
+	interface Target {
+		MemoTargetType getType();
+		long getId();
+	}
 }

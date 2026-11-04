@@ -1,6 +1,7 @@
 package com.hsu.oneclickmeet.domain.memo.service;
 
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
+import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +45,13 @@ public class MemoTargetAccess {
 		};
 	}
 
+	public boolean canAccessSharedCourseForWrite(long memberId, long sharedCourseId) {
+		return couples.findCurrentForUpdate(memberId, now())
+				.filter(couple -> couple.getStatus() == CoupleStatus.CONNECTED || couple.isInGrace(now()))
+				.map(couple -> sharedCourses.existsByIdAndCoupleId(sharedCourseId, couple.getId()))
+				.orElse(false);
+	}
+
 	public List<Memo> accessible(long memberId, List<Memo> candidates) {
 		List<Memo> owned = candidates.stream().filter(memo -> memo.getAuthorId() == memberId).toList();
 		Set<Long> courseIds = targetIds(owned, MemoTargetType.COURSE);
@@ -59,7 +68,11 @@ public class MemoTargetAccess {
 	}
 
 	private Optional<Couple> currentCouple(long memberId) {
-		return couples.findCurrent(memberId, clock.instant().truncatedTo(ChronoUnit.MICROS));
+		return couples.findCurrent(memberId, now());
+	}
+
+	private Instant now() {
+		return clock.instant().truncatedTo(ChronoUnit.MICROS);
 	}
 
 	private Set<Long> targetIds(List<Memo> memos, MemoTargetType targetType) {
