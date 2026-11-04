@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum CoupleErrorCode implements ErrorCode {
+	GRACE_READ_ONLY(HttpStatus.CONFLICT, "COUPLE-0409-01", "관계 유예 중에는 공동 코스를 변경할 수 없습니다."),
 	STATE_CONFLICT(HttpStatus.CONFLICT, "COUPLE-0409-02", "현재 관계 상태에서는 요청을 처리할 수 없습니다."),
 	IDEMPOTENCY_MISMATCH(HttpStatus.CONFLICT, "COUPLE-0409-03", "같은 멱등성 키로 다른 요청을 보낼 수 없습니다."),
 	REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "COUPLE-0409-04", "같은 요청을 처리하고 있습니다."),
