@@ -2,6 +2,8 @@ package com.hsu.oneclickmeet.domain.couple.service;
 
 import static com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus.GRACE;
 import static com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose.CONNECT;
+import static com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose.RECONNECT;
+import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.GRACE_EXPIRED;
 import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.IDEMPOTENCY_MISMATCH;
 import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.INVITATION_EXPIRED;
 import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.INVITATION_NOT_FOUND;
@@ -20,12 +22,15 @@ import com.hsu.oneclickmeet.domain.couple.dto.response.PartnerResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleConnectionReplay;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleInvitation;
+import com.hsu.oneclickmeet.domain.couple.entity.CoupleReconnectionReplay;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
 import com.hsu.oneclickmeet.domain.couple.entity.InvitationPurpose;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleConnectionReplayRepository;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleInvitationRepository;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleMemberRepository;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleReconnectionReplayRepository;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRequestLock;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import java.security.SecureRandom;
 import java.sql.SQLException;
@@ -61,16 +66,23 @@ public class CoupleService {
 	private final CoupleRepository couples;
 	private final CoupleInvitationRepository invitations;
 	private final CoupleConnectionReplayRepository replays;
+	private final CoupleReconnectionReplayRepository reconnectionReplays;
+	private final CoupleRequestLock requestLock;
+	private final CoupleAccessService access;
 	private final CoupleMemberRepository members;
 	private final Clock clock;
 	private final TransactionTemplate writeTransaction;
 
 	public CoupleService(CoupleRepository couples, CoupleInvitationRepository invitations,
-			CoupleConnectionReplayRepository replays, CoupleMemberRepository members,
+			CoupleConnectionReplayRepository replays, CoupleReconnectionReplayRepository reconnectionReplays,
+			CoupleRequestLock requestLock, CoupleAccessService access, CoupleMemberRepository members,
 			@Qualifier("coupleClock") Clock clock, PlatformTransactionManager transactionManager) {
 		this.couples = couples;
 		this.invitations = invitations;
 		this.replays = replays;
+		this.reconnectionReplays = reconnectionReplays;
+		this.requestLock = requestLock;
+		this.access = access;
 		this.members = members;
 		this.clock = clock;
 		this.writeTransaction = new TransactionTemplate(transactionManager);
@@ -168,12 +180,7 @@ public class CoupleService {
 		CoupleInvitation invitation = invitations.findByCode(code)
 				.orElseThrow(() -> new BusinessException(INVITATION_NOT_FOUND));
 		Instant now = now();
-		if (invitation.isUsedOrRevoked()) {
-			throw new BusinessException(INVITATION_UNAVAILABLE);
-		}
-		if (!invitation.isAvailable(now)) {
-			throw new BusinessException(INVITATION_EXPIRED);
-		}
+		requireAvailable(invitation, now);
 		if (invitation.getPurpose() != CONNECT || couples.findCurrent(memberId, now).isPresent()
 				|| couples.findCurrent(issuerId, now).isPresent()) {
 			throw new BusinessException(STATE_CONFLICT);
@@ -183,6 +190,65 @@ public class CoupleService {
 		invitation.consume();
 		replay.complete(code, couple.getId(), now().plus(REPLAY_LIFETIME));
 		return new ConnectionResponse(couple.getId(), couple.getStatus());
+	}
+
+	public ConnectionResponse reconnect(long memberId, long coupleId, UUID idempotencyKey, String invitationCode) {
+		requireMember(memberId);
+		String code = normalizeCode(invitationCode);
+		return writeTransaction.execute(transaction -> reconnectInTransaction(memberId, coupleId, idempotencyKey, code));
+	}
+
+	private ConnectionResponse reconnectInTransaction(long memberId, long coupleId, UUID idempotencyKey, String code) {
+		long partnerId = access.requirePartnerId(memberId, coupleId);
+		requestLock.acquireReconnection(memberId, coupleId, idempotencyKey);
+		String key = idempotencyKey.toString();
+		CoupleReconnectionReplay replay = reconnectionReplays.findByMemberIdAndCoupleIdAndRequestKey(memberId, coupleId, key)
+			.orElseGet(() -> new CoupleReconnectionReplay(memberId, coupleId, key));
+		if (replay.isReplayable(now())) {
+			access.requireSharedReadAccess(memberId, coupleId);
+			if (!code.equals(replay.getInvitationCode())) {
+				throw new BusinessException(IDEMPOTENCY_MISMATCH);
+			}
+			return new ConnectionResponse(coupleId, CoupleStatus.CONNECTED);
+		}
+
+		lockMembers(memberId, partnerId);
+		Couple couple = access.requireMemberCoupleForUpdate(memberId, coupleId);
+		var matchingInvitation = invitations.findByCode(code);
+		Instant confirmedAt = now();
+		// Reconnection codes can expire at the same instant as grace. Report the grace deadline first.
+		if (couple.getGraceEndsAt() != null && !confirmedAt.isBefore(couple.getGraceEndsAt())) {
+			throw new BusinessException(GRACE_EXPIRED);
+		}
+		CoupleInvitation invitation = matchingInvitation
+			.orElseThrow(() -> new BusinessException(INVITATION_NOT_FOUND));
+		if (invitation.getIssuerId() != partnerId || invitation.getPurpose() != RECONNECT
+				|| !Objects.equals(invitation.getCoupleId(), coupleId)) {
+			throw new BusinessException(STATE_CONFLICT);
+		}
+		requireAvailable(invitation, confirmedAt);
+		if (couples.hasOtherCurrentCouple(coupleId, memberId, partnerId, confirmedAt)) {
+			throw new BusinessException(STATE_CONFLICT);
+		}
+
+		couple.reconnect(confirmedAt);
+		invitation.consume();
+		// Any invitation from this grace period must stop working before the next disconnection.
+		invitations.findPending(memberId, RECONNECT)
+			.filter(pending -> Objects.equals(pending.getCoupleId(), coupleId))
+			.ifPresent(CoupleInvitation::revoke);
+		replay.complete(code, now().plus(REPLAY_LIFETIME));
+		reconnectionReplays.save(replay);
+		return new ConnectionResponse(coupleId, CoupleStatus.CONNECTED);
+	}
+
+	private void requireAvailable(CoupleInvitation invitation, Instant now) {
+		if (invitation.isUsedOrRevoked()) {
+			throw new BusinessException(INVITATION_UNAVAILABLE);
+		}
+		if (!invitation.isAvailable(now)) {
+			throw new BusinessException(INVITATION_EXPIRED);
+		}
 	}
 
 	private CoupleConnectionReplay lockReplay(long memberId, String key) {
