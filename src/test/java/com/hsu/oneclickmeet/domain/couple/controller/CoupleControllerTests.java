@@ -207,6 +207,73 @@ class CoupleControllerTests {
 		verifyNoInteractions(disconnectionService);
 	}
 
+	@Test
+	void 재연결은_인증_회원과_관계_ID_및_키와_코드를_서비스에_전달한다() throws Exception {
+		when(coupleService.reconnect(MEMBER_ID, 10L, IDEMPOTENCY_KEY, " kr7-4f2q "))
+			.thenReturn(new ConnectionResponse(10L, CoupleStatus.CONNECTED));
+
+		mvc.perform(post("/api/v1/couples/10/reconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString())
+			.contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\" kr7-4f2q \"}"))
+			.andExpect(status().isOk())
+			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.coupleId").value(10))
+			.andExpect(jsonPath("$.data.status").value("CONNECTED"))
+			.andExpect(jsonPath("$.error").value(nullValue()));
+	}
+
+	@Test
+	void 재연결은_관계_ID가_양수가_아니면_400을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/0/reconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString())
+			.contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"KR7-4F2Q\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(coupleService);
+	}
+
+	@Test
+	void 재연결에_멱등성_키가_빠지면_400을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/reconnections").with(member()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"KR7-4F2Q\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(coupleService);
+	}
+
+	@Test
+	void 재연결에_축약_UUID를_보내면_400을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/reconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", "1-2-3-4-5")
+			.contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"KR7-4F2Q\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"))
+			.andExpect(jsonPath("$.error.errors[0].field").value("Idempotency-Key"));
+		verifyNoInteractions(coupleService);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"", "{}", "{\"invitationCode\":1234567}"})
+	void 재연결에_문자열_초대_코드가_없으면_400을_반환한다(String body) throws Exception {
+		mvc.perform(post("/api/v1/couples/10/reconnections").with(member()).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString())
+			.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(coupleService);
+	}
+
+	@Test
+	void 재연결은_인증된_회원_ID가_없으면_401을_반환한다() throws Exception {
+		mvc.perform(post("/api/v1/couples/10/reconnections").with(user("7")).with(csrf())
+			.header("Idempotency-Key", IDEMPOTENCY_KEY.toString())
+			.contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"KR7-4F2Q\"}"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0401"));
+		verifyNoInteractions(coupleService);
+	}
+
 	@ParameterizedTest
 	@ValueSource(strings = {"{}", "{\"purpose\":\"OTHER\"}", "{\"purpose\":0}"})
 	void 초대_목적이_잘못되면_400을_반환한다(String body) throws Exception {
