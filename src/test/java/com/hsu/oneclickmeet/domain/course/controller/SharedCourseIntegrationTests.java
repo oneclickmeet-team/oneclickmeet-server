@@ -56,6 +56,7 @@ class SharedCourseIntegrationTests {
 	private static final String SHARE = "/api/v1/courses/{courseId}/shares";
 	private static final String LIST = "/api/v1/couples/me/courses";
 	private static final String DETAIL = "/api/v1/shared-courses/{sharedCourseId}";
+	private static final String DISCONNECT = "/api/v1/couples/{coupleId}/disconnections";
 	private static final Instant NOW = Instant.parse("2026-11-04T09:00:00Z");
 	private static final AtomicLong MEMBER_IDS = new AtomicLong(20_000);
 
@@ -216,6 +217,30 @@ class SharedCourseIntegrationTests {
 		share(owner, sourceCourseId, key).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.error.code").value("COURSE-0404"));
 		assertThat(createShare(owner, sourceCourseId, UUID.randomUUID())).isNotEqualTo(sharedId);
+	}
+
+	@Test
+	void keepsSharedCoursesReadableButBlocksNewSharesAfterDisconnection() throws Exception {
+		long sourceCourseId = savePersonalCourse(owner, "공동 코스");
+		long sharedId = createShare(owner, sourceCourseId, UUID.randomUUID());
+		long unsharedCourseId = savePersonalCourse(owner, "개인 코스");
+		Instant graceEndsAt = NOW.plus(Duration.ofDays(30));
+
+		mvc.perform(post(DISCONNECT, coupleId).with(member(partner)).with(csrf())
+				.header("Idempotency-Key", UUID.randomUUID().toString()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.graceEndsAt").value(graceEndsAt.toString()));
+
+		for (long memberId : new long[] {owner, partner}) {
+			mvc.perform(get(DETAIL, sharedId).with(member(memberId))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.readOnly").value(true));
+		}
+		share(owner, unsharedCourseId, UUID.randomUUID()).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-01"));
+
+		given(clock.instant()).willReturn(graceEndsAt);
+		assertSharedDetailNotFound(owner, sharedId);
+		assertSharedDetailNotFound(partner, sharedId);
 	}
 
 	@Test

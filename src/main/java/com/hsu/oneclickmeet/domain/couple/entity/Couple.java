@@ -1,5 +1,7 @@
 package com.hsu.oneclickmeet.domain.couple.entity;
 
+import com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode;
+import com.hsu.oneclickmeet.global.exception.BusinessException;
 import jakarta.persistence.CheckConstraint;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Entity
@@ -26,6 +29,8 @@ import java.time.Instant;
 	check = @CheckConstraint(name = "chk_couples_distinct_members", constraint = "first_member_id <> second_member_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Couple {
+
+	private static final Duration GRACE_PERIOD = Duration.ofDays(30);
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -59,6 +64,23 @@ public class Couple {
 			throw new IllegalArgumentException("커플은 서로 다른 두 회원으로 구성해야 합니다.");
 		}
 		return new Couple(firstMemberId, secondMemberId, now);
+	}
+
+	public void disconnect(Instant now) {
+		if (status != CoupleStatus.CONNECTED) {
+			throw new BusinessException(CoupleErrorCode.STATE_CONFLICT);
+		}
+		disconnectedAt = now;
+		graceEndsAt = now.plus(GRACE_PERIOD);
+		status = CoupleStatus.GRACE;
+	}
+
+	public boolean isInGrace(Instant now) {
+		return status == CoupleStatus.GRACE && now.isBefore(graceEndsAt);
+	}
+
+	public boolean isMember(long memberId) {
+		return memberId == firstMemberId || memberId == secondMemberId;
 	}
 
 	public long partnerId(long memberId) {

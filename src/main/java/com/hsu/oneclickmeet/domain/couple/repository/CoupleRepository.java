@@ -25,4 +25,17 @@ public interface CoupleRepository extends JpaRepository<Couple, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(CURRENT_COUPLE)
 	Optional<Couple> findCurrentForUpdate(@Param("memberId") long memberId, @Param("now") Instant now);
+
+	@Query("""
+		select c.id from Couple c
+		where c.id = :coupleId and (c.firstMemberId = :memberId or c.secondMemberId = :memberId)
+		""")
+	Optional<Long> findMemberCoupleId(@Param("memberId") long memberId, @Param("coupleId") long coupleId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+		select c from Couple c
+		where c.id = :coupleId and (c.firstMemberId = :memberId or c.secondMemberId = :memberId)
+		""")
+	Optional<Couple> findMemberCoupleForUpdate(@Param("memberId") long memberId, @Param("coupleId") long coupleId);
 }
