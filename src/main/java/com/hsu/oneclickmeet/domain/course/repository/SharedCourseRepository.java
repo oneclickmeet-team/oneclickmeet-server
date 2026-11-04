@@ -19,6 +19,9 @@ public interface SharedCourseRepository extends JpaRepository<SharedCourse, Long
 
 	Optional<SharedCourse> findByIdAndCoupleId(long sharedCourseId, long coupleId);
 
+	@Query("select shared.couple.id from SharedCourse shared where shared.id = :sharedCourseId")
+	Optional<Long> findCoupleId(@Param("sharedCourseId") long sharedCourseId);
+
 	@Query("""
 			select shared.id from SharedCourse shared
 			where shared.couple.id = :coupleId and shared.id in :sharedCourseIds

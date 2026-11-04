@@ -23,7 +23,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
 	@Query("""
 			select course.id as courseId, course.name as courseName,
-			       size(course.places) as placeCount, course.createdAt as createdAt
+			       size(course.places) as placeCount, course.createdAt as createdAt,
+			       (select copy.sharedCourseId from SharedCourseCancellationCopy copy where copy.courseId = course.id)
+			           as originSharedCourseId
 			from Course course
 			where exists (
 				select 1 from CourseLibrary library where library.course = course and library.memberId = :memberId
@@ -60,6 +62,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 		long getCourseId();
 		String getCourseName();
 		int getPlaceCount();
+		Long getOriginSharedCourseId();
 		Instant getCreatedAt();
 	}
 }
