@@ -83,6 +83,15 @@ public class CoupleController {
 			UUID.fromString(idempotencyKey), hasBody));
 	}
 
+	@PostMapping(value = "/couples/{coupleId}/reconnections", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ApiResponse<ConnectionResponse> reconnect(@AuthenticationPrincipal Long memberId,
+			@PathVariable("coupleId") @Positive long coupleId,
+			@RequestHeader("Idempotency-Key") @Pattern(regexp = UUID_PATTERN, message = "멱등성 키는 UUID여야 합니다.")
+			String idempotencyKey, @Valid @RequestBody ConnectCoupleRequest request) {
+		return ApiResponse.success(coupleService.reconnect(requireMemberId(memberId), coupleId,
+			UUID.fromString(idempotencyKey), request.invitationCode()));
+	}
+
 	private long requireMemberId(Long memberId) {
 		if (memberId == null || memberId <= 0) {
 			throw new BusinessException(CommonErrorCode.UNAUTHORIZED);

@@ -3,8 +3,8 @@ package com.hsu.oneclickmeet.domain.couple.service;
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
-import com.hsu.oneclickmeet.domain.couple.repository.CoupleDisconnectionRequestLock;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRequestLock;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +52,9 @@ class CoupleServiceIntegrationTests {
 	private CoupleDisconnectionService disconnectionService;
 
 	@Autowired
+	private CoupleAccessService access;
+
+	@Autowired
 	private CoupleRepository couples;
 
 	@Autowired
@@ -64,7 +67,7 @@ class CoupleServiceIntegrationTests {
 	private Clock clock;
 
 	@MockitoSpyBean
-	private CoupleDisconnectionRequestLock disconnectionRequestLock;
+	private CoupleRequestLock requestLock;
 
 	@BeforeEach
 	void prepareMembers() {
@@ -78,6 +81,8 @@ class CoupleServiceIntegrationTests {
 
 	@AfterEach
 	void removeFixtures() {
+		jdbc.update("delete from couple_reconnection_replays where member_id in (?, ?, ?)",
+			ISSUER, ACCEPTOR, THIRD_MEMBER);
 		jdbc.update("delete from couple_disconnection_replays where member_id in (?, ?, ?)",
 			ISSUER, ACCEPTOR, THIRD_MEMBER);
 		jdbc.update("delete from couple_connection_replays where member_id in (?, ?, ?)", ISSUER, ACCEPTOR, THIRD_MEMBER);
@@ -357,7 +362,7 @@ class CoupleServiceIntegrationTests {
 			invocation.callRealMethod();
 			firstRequestLocked.countDown();
 			return null;
-		}).when(disconnectionRequestLock).acquire(ISSUER, coupleId, key);
+		}).when(requestLock).acquireDisconnection(ISSUER, coupleId, key);
 
 		assertThat(countDisconnectionReplays(coupleId, key)).isZero();
 		try (var executor = Executors.newFixedThreadPool(3)) {
@@ -386,6 +391,176 @@ class CoupleServiceIntegrationTests {
 				releaseCouple.countDown();
 			}
 		}
+	}
+
+	@Test
+	void reconnectsJustBeforeGraceEndsAndRestoresSharedWriteAccess() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		Instant connectedAt = couples.findById(coupleId).orElseThrow().getConnectedAt();
+		Instant graceEndsAt = disconnect(coupleId);
+		UUID key = UUID.randomUUID();
+		var transaction = new TransactionTemplate(transactionManager);
+		assertBusinessError("COUPLE-0409-01", () -> transaction.executeWithoutResult(status ->
+			access.requireSharedWriteAccess(ACCEPTOR, coupleId)));
+
+		given(clock.instant()).willReturn(graceEndsAt.minusSeconds(1));
+		String code = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		given(clock.instant()).willReturn(graceEndsAt.minusNanos(1_000));
+		var response = coupleService.reconnect(ACCEPTOR, coupleId, key, code);
+		assertThat(response)
+			.isEqualTo(new ConnectionResponse(coupleId, CoupleStatus.CONNECTED));
+
+		for (long memberId : List.of(ISSUER, ACCEPTOR)) {
+			var couple = coupleService.getMyCouple(memberId).couple();
+			assertThat(couple.coupleId()).isEqualTo(coupleId);
+			assertThat(couple.status()).isEqualTo(CoupleStatus.CONNECTED);
+			assertThat(couple.connectedAt()).isEqualTo(connectedAt);
+			assertThat(couple.disconnectedAt()).isNull();
+			assertThat(couple.graceEndsAt()).isNull();
+			assertThat(couple.remainingGraceDays()).isNull();
+			assertThat(couple.sharedReadOnly()).isFalse();
+			assertThat(couple.canReconnect()).isFalse();
+			transaction.executeWithoutResult(status -> access.requireSharedWriteAccess(memberId, coupleId));
+		}
+		assertThat(countRelationshipsFor(ACCEPTOR)).isOne();
+		given(clock.instant()).willReturn(graceEndsAt);
+		assertThat(coupleService.reconnect(ACCEPTOR, coupleId, key, code)).isEqualTo(response);
+	}
+
+	@Test
+	void rejectsReconnectionAtTheExactGraceDeadline() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		Instant graceEndsAt = disconnect(coupleId);
+		given(clock.instant()).willReturn(graceEndsAt.minusSeconds(1));
+		var invitation = coupleService.issueInvitation(ISSUER, RECONNECT);
+		assertThat(invitation.expiresAt()).isEqualTo(graceEndsAt);
+
+		given(clock.instant()).willReturn(graceEndsAt);
+		assertBusinessError("COUPLE-0410",
+			() -> coupleService.reconnect(ACCEPTOR, coupleId, UUID.randomUUID(), invitation.invitationCode()));
+		assertThat(couples.findById(coupleId).orElseThrow().getStatus()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	@Test
+	void replaysTheOriginalResultWithoutReconnectingAgainAfterAnotherDisconnection() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(coupleId);
+		String code = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		String otherCode = coupleService.issueInvitation(ACCEPTOR, RECONNECT).invitationCode();
+		UUID key = UUID.randomUUID();
+		Instant reconnectedAt = NOW.plus(Duration.ofHours(1));
+		given(clock.instant()).willReturn(reconnectedAt);
+		var response = coupleService.reconnect(ACCEPTOR, coupleId, key, code);
+		disconnect(coupleId);
+
+		assertBusinessError("INVITATION-0409",
+			() -> coupleService.reconnect(ACCEPTOR, coupleId, UUID.randomUUID(), code));
+		assertBusinessError("INVITATION-0409",
+			() -> coupleService.reconnect(ISSUER, coupleId, UUID.randomUUID(), otherCode));
+		assertBusinessError("COUPLE-0409-03", () -> coupleService.reconnect(ACCEPTOR, coupleId, key, otherCode));
+		assertBusinessError("COUPLE-0404", () -> coupleService.reconnect(THIRD_MEMBER, coupleId, key, code));
+
+		given(clock.instant()).willReturn(reconnectedAt.plus(Duration.ofHours(24)).minusNanos(1_000));
+		String normalizedCode = " " + code.replace("-", "").toLowerCase(Locale.ROOT) + " ";
+		assertThat(coupleService.reconnect(ACCEPTOR, coupleId, key, normalizedCode)).isEqualTo(response);
+		assertThat(coupleService.getMyCouple(ACCEPTOR).couple().status()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	@Test
+	void scopesReplaysToTheRequestedCouple() {
+		long firstCoupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(firstCoupleId);
+		UUID key = UUID.randomUUID();
+		String firstCode = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		coupleService.reconnect(ACCEPTOR, firstCoupleId, key, firstCode);
+		jdbc.update("update couples set status = 'ENDED' where id = ?", firstCoupleId);
+
+		long secondCoupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(secondCoupleId);
+		String secondCode = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		assertThat(coupleService.reconnect(ACCEPTOR, secondCoupleId, key, secondCode))
+			.isEqualTo(new ConnectionResponse(secondCoupleId, CoupleStatus.CONNECTED));
+		assertBusinessError("COUPLE-0404", () -> coupleService.reconnect(ACCEPTOR, firstCoupleId, key, firstCode));
+	}
+
+	@Test
+	void rejectsCodesFromTheRequesterOrAnotherRelationshipAndOtherPurposes() {
+		String connectCode = coupleService.issueInvitation(ISSUER, CONNECT).invitationCode();
+		long previousCoupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(previousCoupleId);
+		String previousCode = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		jdbc.update("update couples set status = 'ENDED' where id = ?", previousCoupleId);
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(coupleId);
+		String ownCode = coupleService.issueInvitation(ACCEPTOR, RECONNECT).invitationCode();
+
+		assertBusinessError("COMMON-0401",
+			() -> coupleService.reconnect(99L, coupleId, UUID.randomUUID(), previousCode));
+		assertBusinessError("COUPLE-0404",
+			() -> coupleService.reconnect(THIRD_MEMBER, coupleId, UUID.randomUUID(), previousCode));
+		assertBusinessError("COUPLE-0404",
+			() -> coupleService.reconnect(ACCEPTOR, Long.MAX_VALUE, UUID.randomUUID(), previousCode));
+		for (String invalidCode : List.of(ownCode, previousCode, connectCode)) {
+			assertBusinessError("COUPLE-0409-02",
+				() -> coupleService.reconnect(ACCEPTOR, coupleId, UUID.randomUUID(), invalidCode));
+		}
+		assertThat(couples.findById(coupleId).orElseThrow().getStatus()).isEqualTo(CoupleStatus.GRACE);
+	}
+
+	@Test
+	void rejectsRevokedAndExpiredCodesAndKeepsTheKeyAvailableAfterFailure() {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(coupleId);
+		String revokedCode = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		var expiringInvitation = coupleService.issueInvitation(ISSUER, RECONNECT);
+		UUID key = UUID.randomUUID();
+		assertBusinessError("INVITATION-0409", () -> coupleService.reconnect(ACCEPTOR, coupleId, key, revokedCode));
+
+		given(clock.instant()).willReturn(expiringInvitation.expiresAt());
+		assertBusinessError("INVITATION-0410",
+			() -> coupleService.reconnect(ACCEPTOR, coupleId, key, expiringInvitation.invitationCode()));
+		String code = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		long conflictingCoupleId = createCouple(THIRD_MEMBER, ACCEPTOR);
+		assertBusinessError("COUPLE-0409-02", () -> coupleService.reconnect(ACCEPTOR, coupleId, key, code));
+		jdbc.update("update couples set status = 'ENDED' where id = ?", conflictingCoupleId);
+
+		assertThat(coupleService.reconnect(ACCEPTOR, coupleId, key, code))
+			.isEqualTo(new ConnectionResponse(coupleId, CoupleStatus.CONNECTED));
+	}
+
+	@Test
+	void rejectsAnOverlappingReconnectionWithTheSameKey() throws Exception {
+		long coupleId = createCouple(ISSUER, ACCEPTOR);
+		disconnect(coupleId);
+		String code = coupleService.issueInvitation(ISSUER, RECONNECT).invitationCode();
+		UUID key = UUID.randomUUID();
+		var firstRequestLocked = new CountDownLatch(1);
+		var releaseFirstRequest = new CountDownLatch(1);
+		doAnswer(invocation -> {
+			invocation.callRealMethod();
+			firstRequestLocked.countDown();
+			awaitRelease(releaseFirstRequest);
+			return null;
+		}).when(requestLock).acquireReconnection(ACCEPTOR, coupleId, key);
+
+		try (var executor = Executors.newFixedThreadPool(2)) {
+			try {
+				var first = executor.submit(() -> coupleService.reconnect(ACCEPTOR, coupleId, key, code));
+				assertThat(firstRequestLocked.await(5, TimeUnit.SECONDS)).isTrue();
+				executor.submit(() -> assertBusinessError("COUPLE-0409-04",
+					() -> coupleService.reconnect(ACCEPTOR, coupleId, key, code))).get(5, TimeUnit.SECONDS);
+				releaseFirstRequest.countDown();
+				var response = first.get(5, TimeUnit.SECONDS);
+				assertThat(response).isEqualTo(new ConnectionResponse(coupleId, CoupleStatus.CONNECTED));
+				assertThat(coupleService.reconnect(ACCEPTOR, coupleId, key, code)).isEqualTo(response);
+			} finally {
+				releaseFirstRequest.countDown();
+			}
+		}
+	}
+
+	private Instant disconnect(long coupleId) {
+		return disconnectionService.disconnect(ISSUER, coupleId, UUID.randomUUID(), false).graceEndsAt();
 	}
 
 	private int countDisconnectionReplays(long coupleId, UUID key) {

@@ -10,8 +10,8 @@ import static com.hsu.oneclickmeet.global.exception.CommonErrorCode.UNAUTHORIZED
 import com.hsu.oneclickmeet.domain.couple.dto.response.DisconnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleDisconnectionReplay;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleDisconnectionReplayRepository;
-import com.hsu.oneclickmeet.domain.couple.repository.CoupleDisconnectionRequestLock;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleMemberRepository;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRequestLock;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,12 +31,12 @@ public class CoupleDisconnectionService {
 
 	private final CoupleAccessService access;
 	private final CoupleDisconnectionReplayRepository replays;
-	private final CoupleDisconnectionRequestLock requestLock;
+	private final CoupleRequestLock requestLock;
 	private final CoupleMemberRepository members;
 	private final Clock clock;
 
 	public CoupleDisconnectionService(CoupleAccessService access, CoupleDisconnectionReplayRepository replays,
-			CoupleDisconnectionRequestLock requestLock, CoupleMemberRepository members,
+			CoupleRequestLock requestLock, CoupleMemberRepository members,
 			@Qualifier("coupleClock") Clock clock) {
 		this.access = access;
 		this.replays = replays;
@@ -51,7 +51,7 @@ public class CoupleDisconnectionService {
 			throw new BusinessException(UNAUTHORIZED);
 		}
 		access.requireMemberCouple(memberId, coupleId);
-		requestLock.acquire(memberId, coupleId, idempotencyKey);
+		requestLock.acquireDisconnection(memberId, coupleId, idempotencyKey);
 		String key = idempotencyKey.toString();
 		CoupleDisconnectionReplay replay = replays.findByMemberIdAndCoupleIdAndRequestKey(memberId, coupleId, key)
 			.orElseGet(() -> new CoupleDisconnectionReplay(memberId, coupleId, key));

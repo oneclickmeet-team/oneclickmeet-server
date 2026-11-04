@@ -79,6 +79,18 @@ public class Couple {
 		return status == CoupleStatus.GRACE && now.isBefore(graceEndsAt);
 	}
 
+	public void reconnect(Instant now) {
+		if (status != CoupleStatus.GRACE) {
+			throw new BusinessException(CoupleErrorCode.STATE_CONFLICT);
+		}
+		if (!isInGrace(now)) {
+			throw new BusinessException(CoupleErrorCode.GRACE_EXPIRED);
+		}
+		status = CoupleStatus.CONNECTED;
+		disconnectedAt = null;
+		graceEndsAt = null;
+	}
+
 	public boolean isMember(long memberId) {
 		return memberId == firstMemberId || memberId == secondMemberId;
 	}

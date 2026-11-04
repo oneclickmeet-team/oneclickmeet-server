@@ -49,7 +49,12 @@ public class CoupleAccessService {
 
 	@Transactional(readOnly = true)
 	public void requireMemberCouple(long memberId, long coupleId) {
-		couples.findMemberCoupleId(memberId, coupleId)
+		requirePartnerId(memberId, coupleId);
+	}
+
+	@Transactional(readOnly = true)
+	public long requirePartnerId(long memberId, long coupleId) {
+		return couples.findPartnerId(memberId, coupleId)
 			.orElseThrow(() -> new BusinessException(COUPLE_NOT_FOUND));
 	}
 
