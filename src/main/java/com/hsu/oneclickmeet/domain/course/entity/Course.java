@@ -81,6 +81,16 @@ public class Course extends BaseEntity {
 		places.addAll(updatedPlaces);
 	}
 
+	public Course copyForSharing() {
+		List<PlaceInput> copy = places.stream()
+				.map(place -> new PlaceInput(place.getOriginalPlaceId(), place.getName(), place.getPosition(),
+						place.getMenuList().stream()
+								.map(menu -> new MenuInput(menu.getName(), menu.getPrice(), menu.getPosition(), menu.getSelected()))
+								.toList()))
+				.toList();
+		return create(name, copy);
+	}
+
 	public record PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus) {
 	}
 

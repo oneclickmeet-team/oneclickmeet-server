@@ -9,7 +9,7 @@ import com.hsu.oneclickmeet.domain.course.entity.CourseUpdateRequestReceipt;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
 import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
-import com.hsu.oneclickmeet.domain.course.repository.CourseSaveRequestLock;
+import com.hsu.oneclickmeet.domain.course.repository.CourseRequestLock;
 import com.hsu.oneclickmeet.domain.course.repository.CourseUpdateRequestRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
@@ -35,7 +35,7 @@ import java.util.UUID;
 public class CourseUpdateService {
 	private final CourseRepository courseRepository;
 	private final CourseLibraryRepository courseLibraryRepository;
-	private final CourseSaveRequestLock requestLock;
+	private final CourseRequestLock requestLock;
 	private final CourseUpdateRequestRepository updateRequestRepository;
 	private final Optional<CoursePlaceLookup> placeLookup;
 
@@ -43,7 +43,7 @@ public class CourseUpdateService {
 	public CourseUpdateResponse update(@Positive long memberId, @Positive long courseId, @NotNull UUID requestKey,
 			@Valid @NotNull UpdateCourseRequest request) {
 		requireOwnership(memberId, courseId);
-		requestLock.acquireForUpdate(memberId, courseId, requestKey);
+		requestLock.acquireUpdate(memberId, courseId, requestKey);
 		Course course = courseRepository.findOwnedCourseForUpdate(memberId, courseId)
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
 		// A concurrent delete may have removed the ownership link while we waited on the course row.

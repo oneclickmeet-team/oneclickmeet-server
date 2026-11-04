@@ -47,6 +47,10 @@ public class CourseReadService {
 	public CourseDetailResponse detail(long memberId, long courseId) {
 		Course course = courseRepository.findOwnedCourse(memberId, courseId)
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
+		return toDetail(course);
+	}
+
+	static CourseDetailResponse toDetail(Course course) {
 		List<Place> places = course.getPlaces().stream().map(CourseReadService::toPlace).toList();
 		long total = places.stream().mapToLong(Place::selectedSubtotal).sum();
 		long unselectedPlaces = places.stream().filter(place -> place.menuList().stream().noneMatch(Menu::selected)).count();

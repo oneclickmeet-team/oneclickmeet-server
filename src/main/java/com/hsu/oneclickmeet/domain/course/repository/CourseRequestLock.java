@@ -18,33 +18,41 @@ import java.util.UUID;
 @Slf4j
 @Repository
 @RequiredArgsConstructor
-public class CourseSaveRequestLock {
-	private static final String LOCK_NAME = "SHA2(CONCAT(DATABASE(), ':course-save:', ?), 256)";
+public class CourseRequestLock {
+	private static final String LOCK_NAME = "SHA2(CONCAT(DATABASE(), ?), 256)";
 	private static final String ACQUIRE = "SELECT GET_LOCK(" + LOCK_NAME + ", 0)";
 	private static final String RELEASE = "SELECT RELEASE_LOCK(" + LOCK_NAME + ")";
 
 	private final JdbcTemplate jdbcTemplate;
 
-	public void acquire(long memberId, UUID requestKey) {
-		acquire(memberId + ":" + requestKey);
+	public void acquireSave(long memberId, UUID requestKey) {
+		if (!tryAcquire(":course-save:" + memberId + ":" + requestKey)) {
+			throw new BusinessException(CourseErrorCode.SAVE_IN_PROGRESS);
+		}
 	}
 
-	public void acquireForUpdate(long memberId, long courseId, UUID requestKey) {
-		acquire("update:" + memberId + ":" + courseId + ":" + requestKey);
+	public void acquireUpdate(long memberId, long courseId, UUID requestKey) {
+		if (!tryAcquire(":course-save:update:" + memberId + ":" + courseId + ":" + requestKey)) {
+			throw new BusinessException(CourseErrorCode.SAVE_IN_PROGRESS);
+		}
 	}
 
-	private void acquire(String key) {
+	public boolean tryAcquireShare(long memberId, long courseId, UUID requestKey) {
+		return tryAcquire(":course-share:" + memberId + ":" + courseId + ":" + requestKey);
+	}
+
+	private boolean tryAcquire(String key) {
 		if (!TransactionSynchronizationManager.isActualTransactionActive()
 				|| !TransactionSynchronizationManager.isSynchronizationActive()) {
-			throw new IllegalStateException("코스 저장 트랜잭션이 필요합니다.");
+			throw new IllegalStateException("코스 요청 트랜잭션이 필요합니다.");
 		}
-		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+		return Boolean.TRUE.equals(jdbcTemplate.execute((ConnectionCallback<Boolean>) connection -> {
 			Integer acquired = executeLockQuery(connection, ACQUIRE, key);
 			if (Integer.valueOf(0).equals(acquired)) {
-				throw new BusinessException(CourseErrorCode.SAVE_IN_PROGRESS);
+				return false;
 			}
 			if (!Integer.valueOf(1).equals(acquired)) {
-				throw new IllegalStateException("코스 저장 요청 잠금을 얻지 못했습니다.");
+				throw new IllegalStateException("코스 요청 잠금을 얻지 못했습니다.");
 			}
 			Connection transactionConnection = DataSourceUtils.getTargetConnection(connection);
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -54,14 +62,14 @@ public class CourseSaveRequestLock {
 					release(transactionConnection, key);
 				}
 			});
-			return null;
-		});
+			return true;
+		}));
 	}
 
 	private void release(Connection connection, String key) {
 		try {
 			if (!Integer.valueOf(1).equals(executeLockQuery(connection, RELEASE, key))) {
-				throw new SQLException("코스 저장 요청 잠금이 현재 연결에 없습니다.");
+				throw new SQLException("코스 요청 잠금이 현재 연결에 없습니다.");
 			}
 		} catch (SQLException releaseFailure) {
 			try {
@@ -69,7 +77,7 @@ public class CourseSaveRequestLock {
 			} catch (SQLException abortFailure) {
 				releaseFailure.addSuppressed(abortFailure);
 			}
-			log.error("코스 저장 요청 잠금 해제에 실패했습니다.", releaseFailure);
+			log.error("코스 요청 잠금 해제에 실패했습니다.", releaseFailure);
 		}
 	}
 

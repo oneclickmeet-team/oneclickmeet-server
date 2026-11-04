@@ -1,12 +1,13 @@
 package com.hsu.oneclickmeet.domain.course.service;
 
+import com.hsu.oneclickmeet.domain.couple.entity.Couple;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.MenuRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
+import com.hsu.oneclickmeet.domain.course.dto.request.UpdateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseListResponse.Item;
-import com.hsu.oneclickmeet.domain.course.entity.Course;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
-import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,7 +37,13 @@ class CourseDeleteServiceTests {
 	private CourseReadService readService;
 
 	@Autowired
-	private CourseRepository courseRepository;
+	private CourseShareService shareService;
+
+	@Autowired
+	private CourseUpdateService updateService;
+
+	@Autowired
+	private CoupleRepository coupleRepository;
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -47,11 +55,12 @@ class CourseDeleteServiceTests {
 		UUID originalSaveKey = UUID.randomUUID();
 		long courseId = save(ownerId, originalSaveKey, "삭제할 개인 코스");
 		long otherPersonalCopyId = save(otherOwnerId, UUID.randomUUID(), "다른 회원의 개인 사본");
-		long sharedCopyId = courseRepository.save(Course.create("독립 공동 사본")).getId();
-		jdbc.update("""
-				insert into shared_course (shared_course_id, course_id, created_at, updated_at)
-				values (91001, ?, current_timestamp, current_timestamp)
-				""", sharedCopyId);
+		coupleRepository.save(Couple.connect(ownerId, otherOwnerId, Instant.now()));
+		var shared = shareService.share(ownerId, courseId, UUID.randomUUID());
+		var retainedPlaces = readService.detail(ownerId, courseId).places().stream()
+				.map(place -> new UpdateCourseRequest.PlaceRequest(place.coursePlaceId(), place.placeId(), List.of()))
+				.toList();
+		updateService.update(ownerId, courseId, UUID.randomUUID(), new UpdateCourseRequest("변경한 개인 원본", retainedPlaces));
 		jdbc.update("update course_place set place_memo = ? where course_id = ? and visit_order = 1",
 				"예약 내용", courseId);
 
@@ -62,8 +71,15 @@ class CourseDeleteServiceTests {
 		assertNotFound(() -> deleteService.delete(ownerId, courseId));
 		assertNotFound(() -> save(ownerId, originalSaveKey, "삭제할 개인 코스"));
 		assertThat(readService.detail(otherOwnerId, otherPersonalCopyId).selectedTotalPrice()).isEqualTo(25_000L);
-		assertThat(jdbc.queryForObject("select course_id from shared_course where shared_course_id = 91001", Long.class))
-				.isEqualTo(sharedCopyId);
+		assertThat(jdbc.queryForObject("""
+				select c.course_name from shared_course s join course c on c.course_id = s.course_id
+				where s.shared_course_id = ?
+				""", String.class, shared.sharedCourseId())).isEqualTo("삭제할 개인 코스");
+		assertThat(jdbc.queryForObject("""
+				select count(*) from shared_course s join course_place p on p.course_id = s.course_id
+				join course_place_item m on m.place_id = p.place_id
+				where s.shared_course_id = ? and m.price = 25000
+				""", Long.class, shared.sharedCourseId())).isOne();
 		assertThat(jdbc.queryForObject("select place_memo from course_place where course_id = ? and visit_order = 1",
 				String.class, courseId)).isEqualTo("예약 내용");
 	}
