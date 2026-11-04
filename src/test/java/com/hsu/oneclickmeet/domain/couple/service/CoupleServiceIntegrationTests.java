@@ -3,8 +3,8 @@ package com.hsu.oneclickmeet.domain.couple.service;
 import com.hsu.oneclickmeet.domain.couple.dto.response.ConnectionResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
-import com.hsu.oneclickmeet.domain.couple.repository.CoupleDisconnectionRequestLock;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
+import com.hsu.oneclickmeet.domain.couple.repository.CoupleRequestLock;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,7 +64,7 @@ class CoupleServiceIntegrationTests {
 	private Clock clock;
 
 	@MockitoSpyBean
-	private CoupleDisconnectionRequestLock disconnectionRequestLock;
+	private CoupleRequestLock requestLock;
 
 	@BeforeEach
 	void prepareMembers() {
@@ -357,7 +357,7 @@ class CoupleServiceIntegrationTests {
 			invocation.callRealMethod();
 			firstRequestLocked.countDown();
 			return null;
-		}).when(disconnectionRequestLock).acquire(ISSUER, coupleId, key);
+		}).when(requestLock).acquireDisconnection(ISSUER, coupleId, key);
 
 		assertThat(countDisconnectionReplays(coupleId, key)).isZero();
 		try (var executor = Executors.newFixedThreadPool(3)) {
