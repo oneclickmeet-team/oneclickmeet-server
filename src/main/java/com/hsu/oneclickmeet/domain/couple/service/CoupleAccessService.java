@@ -1,7 +1,7 @@
 package com.hsu.oneclickmeet.domain.couple.service;
 
 import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.COUPLE_NOT_FOUND;
-import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.SHARED_READ_ONLY;
+import static com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode.GRACE_READ_ONLY;
 
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
@@ -42,7 +42,7 @@ public class CoupleAccessService {
 			return;
 		}
 		if (couple.isInGrace(clock.instant())) {
-			throw new BusinessException(SHARED_READ_ONLY);
+			throw new BusinessException(GRACE_READ_ONLY);
 		}
 		throw new BusinessException(COUPLE_NOT_FOUND);
 	}

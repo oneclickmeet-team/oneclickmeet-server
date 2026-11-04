@@ -12,13 +12,19 @@ import java.util.Optional;
 
 public interface CoupleRepository extends JpaRepository<Couple, Long> {
 
-	@Query("""
+	String CURRENT_COUPLE = """
 		select c from Couple c
 		where (c.firstMemberId = :memberId or c.secondMemberId = :memberId)
 		  and (c.status = com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus.CONNECTED
 		    or (c.status = com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus.GRACE and c.graceEndsAt > :now))
-		""")
+		""";
+
+	@Query(CURRENT_COUPLE)
 	Optional<Couple> findCurrent(@Param("memberId") long memberId, @Param("now") Instant now);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query(CURRENT_COUPLE)
+	Optional<Couple> findCurrentForUpdate(@Param("memberId") long memberId, @Param("now") Instant now);
 
 	@Query("""
 		select c.id from Couple c

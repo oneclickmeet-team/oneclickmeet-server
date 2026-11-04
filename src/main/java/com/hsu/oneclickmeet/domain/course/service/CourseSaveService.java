@@ -7,7 +7,7 @@ import com.hsu.oneclickmeet.domain.course.entity.CourseSaveRequest;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.repository.CourseLibraryRepository;
 import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
-import com.hsu.oneclickmeet.domain.course.repository.CourseSaveRequestLock;
+import com.hsu.oneclickmeet.domain.course.repository.CourseRequestLock;
 import com.hsu.oneclickmeet.domain.course.repository.CourseSaveRequestRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -39,14 +39,14 @@ public class CourseSaveService {
 	private final CourseRepository courseRepository;
 	private final CourseLibraryRepository courseLibraryRepository;
 	private final CourseSaveRequestRepository saveRequestRepository;
-	private final CourseSaveRequestLock saveRequestLock;
+	private final CourseRequestLock requestLock;
 
 	/** The caller supplies a verified member ID and the place domain's authorized lookup. */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public long save(@Positive long memberId, @NotNull UUID requestKey, @Valid @NotNull CreateCourseRequest request,
 			@NotNull CoursePlaceLookup placeLookup) {
 		String requestHash = fingerprint(request);
-		saveRequestLock.acquire(memberId, requestKey);
+		requestLock.acquireSave(memberId, requestKey);
 		var previous = saveRequestRepository.findByMemberIdAndRequestKey(memberId, requestKey);
 		if (previous.isPresent()) {
 			CourseSaveRequest saved = previous.get();
