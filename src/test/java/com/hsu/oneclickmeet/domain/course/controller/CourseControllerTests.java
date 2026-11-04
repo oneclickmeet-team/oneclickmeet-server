@@ -1,11 +1,16 @@
 package com.hsu.oneclickmeet.domain.course.controller;
 
+import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
+import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.MenuRequest;
+import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseListResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseUpdateResponse;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.service.CourseDeleteService;
+import com.hsu.oneclickmeet.domain.course.service.CoursePlaceLookup;
 import com.hsu.oneclickmeet.domain.course.service.CourseReadService;
+import com.hsu.oneclickmeet.domain.course.service.CourseSaveService;
 import com.hsu.oneclickmeet.domain.course.service.CourseUpdateService;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,7 @@ import java.util.UUID;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -35,6 +41,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -48,6 +55,16 @@ class CourseControllerTests {
 	private static final long COURSE_ID = 41L;
 	private static final Instant CREATED_AT = Instant.parse("2026-10-31T04:00:00Z");
 	private static final UUID REQUEST_KEY = UUID.fromString("63a82629-0875-42b5-a90b-9be545a9fa7a");
+	private static final String CREATE_BODY = """
+			{
+			  "courseName": "산책 코스",
+			  "places": [
+			    {"placeId": 51, "menuList": [{"menuId": null, "menuName": "파스타", "price": 24000, "selected": true}]},
+			    {"placeId": 52, "menuList": []},
+			    {"placeId": 53, "menuList": []}
+			  ]
+			}
+			""";
 	private static final String UPDATE_BODY = """
 			{
 			  "courseName": "산책 코스",
@@ -70,6 +87,71 @@ class CourseControllerTests {
 
 	@MockitoBean
 	private CourseDeleteService courseDeleteService;
+
+	@MockitoBean
+	private CourseSaveService courseSaveService;
+
+	@MockitoBean
+	private CoursePlaceLookup coursePlaceLookup;
+
+	@Test
+	void 개인_코스_저장에_principal과_멱등성_키와_장소_조회기를_전달하고_201을_반환한다() throws Exception {
+		var request = new CreateCourseRequest("산책 코스", List.of(
+				new PlaceRequest(51L, List.of(new MenuRequest(null, "파스타", 24_000, true))),
+				new PlaceRequest(52L, List.of()), new PlaceRequest(53L, List.of())));
+		when(courseSaveService.save(eq(MEMBER_ID), eq(REQUEST_KEY), eq(request), same(coursePlaceLookup)))
+				.thenReturn(COURSE_ID);
+
+		mvc.perform(post(COURSES_URL).param("memberId", "999").with(member(MEMBER_ID)).with(csrf())
+				.header("Idempotency-Key", REQUEST_KEY).contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY))
+			.andExpect(status().isCreated())
+			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.courseId").value(COURSE_ID))
+			.andExpect(jsonPath("$.error").value(nullValue()));
+		verify(courseSaveService).save(eq(MEMBER_ID), eq(REQUEST_KEY), eq(request), same(coursePlaceLookup));
+	}
+
+	@Test
+	void 개인_코스_저장에_멱등성_키가_없으면_400을_반환한다() throws Exception {
+		mvc.perform(post(COURSES_URL).with(member(MEMBER_ID)).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(courseSaveService);
+	}
+
+	@Test
+	void 개인_코스_저장에_잘못된_멱등성_키를_쓰면_400을_반환한다() throws Exception {
+		mvc.perform(post(COURSES_URL).with(member(MEMBER_ID)).with(csrf())
+				.header("Idempotency-Key", "1-1-1-1-1").contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"))
+			.andExpect(jsonPath("$.error.errors[0].field").value("Idempotency-Key"));
+		verifyNoInteractions(courseSaveService);
+	}
+
+	@Test
+	void 개인_코스_저장에_장소가_부족하면_400을_반환한다() throws Exception {
+		mvc.perform(post(COURSES_URL).with(member(MEMBER_ID)).with(csrf())
+				.header("Idempotency-Key", REQUEST_KEY).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"courseName": "산책 코스", "places": [{"placeId": 51, "menuList": []}]}
+						"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"))
+			.andExpect(jsonPath("$.error.errors[0].field").value("places"));
+		verifyNoInteractions(courseSaveService);
+	}
+
+	@Test
+	void 개인_코스_저장에_인증된_회원_ID가_없으면_401을_반환한다() throws Exception {
+		mvc.perform(post(COURSES_URL).param("memberId", "7").with(user("7")).with(csrf())
+				.header("Idempotency-Key", REQUEST_KEY).contentType(MediaType.APPLICATION_JSON).content(CREATE_BODY))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0401"));
+		verifyNoInteractions(courseSaveService);
+	}
 
 	@Test
 	void 첫_목록은_principal과_기본_크기로_조회하고_빈_페이지를_반환한다() throws Exception {

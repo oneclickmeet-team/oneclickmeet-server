@@ -1,11 +1,15 @@
 package com.hsu.oneclickmeet.domain.course.controller;
 
+import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.UpdateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseListResponse;
+import com.hsu.oneclickmeet.domain.course.dto.response.CourseSaveResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseUpdateResponse;
 import com.hsu.oneclickmeet.domain.course.service.CourseDeleteService;
+import com.hsu.oneclickmeet.domain.course.service.CoursePlaceLookup;
 import com.hsu.oneclickmeet.domain.course.service.CourseReadService;
+import com.hsu.oneclickmeet.domain.course.service.CourseSaveService;
 import com.hsu.oneclickmeet.domain.course.service.CourseUpdateService;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
@@ -19,6 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -27,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -42,6 +48,18 @@ public class CourseController {
 	private final CourseReadService courseReadService;
 	private final CourseUpdateService courseUpdateService;
 	private final CourseDeleteService courseDeleteService;
+	private final CourseSaveService courseSaveService;
+	private final Optional<CoursePlaceLookup> placeLookup;
+
+	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+	@ResponseStatus(HttpStatus.CREATED)
+	public ApiResponse<CourseSaveResponse> createCourse(@AuthenticationPrincipal Long memberId,
+			@RequestHeader("Idempotency-Key") @Pattern(regexp = UUID_PATTERN, message = "멱등성 키는 UUID여야 합니다.")
+			String idempotencyKey, @Valid @RequestBody CreateCourseRequest request) {
+		long courseId = courseSaveService.save(requireMemberId(memberId), UUID.fromString(idempotencyKey), request,
+				placeLookup.orElse((requesterId, placeId) -> Optional.empty()));
+		return ApiResponse.success(new CourseSaveResponse(courseId));
+	}
 
 	@GetMapping
 	public ApiResponse<CourseListResponse> listCourses(@AuthenticationPrincipal Long memberId,
