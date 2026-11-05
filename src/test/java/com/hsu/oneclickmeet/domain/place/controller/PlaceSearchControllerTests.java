@@ -56,7 +56,7 @@ class PlaceSearchControllerTests {
 	void returnsCandidatesInCommonResponse() throws Exception {
 		client.result = new PlaceSearchResult(List.of(CANDIDATE), 1, true);
 
-		mvc.perform(get("/places/search").param("query", "한성대입구역 카페"))
+		mvc.perform(get("/api/v1/places/search").param("query", "한성대입구역 카페"))
 			.andExpect(status().isOk())
 			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 			.andExpect(jsonPath("$.success").value(true))
@@ -73,7 +73,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("page와 size를 생략하면 기본값(1쪽, 10건)으로 검색한다")
 	void usesDefaultPageAndSize() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페")).andExpect(status().isOk());
+		mvc.perform(get("/api/v1/places/search").param("query", "카페")).andExpect(status().isOk());
 
 		assertThat(client.commands).singleElement().satisfies(command -> {
 			assertThat(command.page()).isEqualTo(1);
@@ -84,7 +84,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("page, size를 서비스로 전달한다")
 	void passesPageAndSize() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페").param("page", "2").param("size", "5"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("page", "2").param("size", "5"))
 			.andExpect(status().isOk());
 
 		assertThat(client.commands).singleElement().satisfies(command -> {
@@ -96,7 +96,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("결과 상한을 넘는 page는 카카오를 호출하지 않고 빈 결과를 200으로 돌려준다")
 	void returnsEmptyForPageBeyondLimit() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페").param("page", "6").param("size", "10"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("page", "6").param("size", "10"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.candidates").isEmpty())
@@ -108,7 +108,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("검색어가 없거나 공백이면 400과 필드별 오류를 돌려준다")
 	void rejectsMissingOrBlankQuery() throws Exception {
-		for (var request : List.of(get("/places/search"), get("/places/search").param("query", "   "))) {
+		for (var request : List.of(get("/api/v1/places/search"), get("/api/v1/places/search").param("query", "   "))) {
 			mvc.perform(request)
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.success").value(false))
@@ -122,10 +122,10 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("size가 15를 넘거나 page가 1 미만이면 400이다")
 	void rejectsOutOfRangePageAndSize() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페").param("size", "16"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("size", "16"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.error.errors[*].field").value(hasItem("size")));
-		mvc.perform(get("/places/search").param("query", "카페").param("page", "0"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("page", "0"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.error.errors[*].field").value(hasItem("page")));
 	}
@@ -133,7 +133,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("lat·lng를 보내도 무시하고 카카오에는 위치를 전달하지 않는다")
 	void ignoresLocationParameters() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페").param("lat", "37.58").param("lng", "127.01"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("lat", "37.58").param("lng", "127.01"))
 			.andExpect(status().isOk());
 
 		assertThat(client.commands).singleElement().satisfies(command -> {
@@ -145,7 +145,7 @@ class PlaceSearchControllerTests {
 	@Test
 	@DisplayName("숫자가 아닌 page는 400이다")
 	void rejectsNonNumericPage() throws Exception {
-		mvc.perform(get("/places/search").param("query", "카페").param("page", "abc"))
+		mvc.perform(get("/api/v1/places/search").param("query", "카페").param("page", "abc"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.success").value(false))
 			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
@@ -157,7 +157,7 @@ class PlaceSearchControllerTests {
 		for (Reason reason : Reason.values()) {
 			client.failure = new PlaceUpstreamException(reason, "내부 상세 " + reason);
 
-			mvc.perform(get("/places/search").param("query", "카페"))
+			mvc.perform(get("/api/v1/places/search").param("query", "카페"))
 				.andExpect(status().isBadGateway())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.success").value(false))
