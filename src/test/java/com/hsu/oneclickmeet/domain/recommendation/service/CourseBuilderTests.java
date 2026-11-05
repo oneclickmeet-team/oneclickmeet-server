@@ -103,8 +103,8 @@ class CourseBuilderTests {
 	void anchorLeadsEveryCourse() {
 		CourseSpot anchor = spot("anchor", "CE7", 0.000, 0.000, true);
 		List<CourseSpot> candidates = new ArrayList<>(List.of(anchor));
-		for (int i = 0; i < 8; i++) {
-			candidates.add(spot("p" + i, i % 2 == 0 ? "FD6" : "CT1", 0.001 * (i + 1), 0.0));
+		for (int i = 0; i < 14; i++) {
+			candidates.add(spot("p" + i, i % 2 == 0 ? "FD6" : "CT1", 0.0006 * (i + 1), 0.0003 * (i % 3)));
 		}
 
 		List<Course> courses = CourseBuilder.build(LAT, LNG, anchor, candidates);
