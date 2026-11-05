@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.io.IOException;
 
@@ -69,9 +70,10 @@ class KakaoPlaceSearchClientTests {
 
 	private final RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
 	private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+	private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
 	private KakaoPlaceSearchClient client(String apiKey) {
-		return new KakaoPlaceSearchClient(builder.build(), new KakaoLocalProperties(apiKey, null, null, null));
+		return new KakaoPlaceSearchClient(builder.build(), new KakaoLocalProperties(apiKey, null, null, null), registry);
 	}
 
 	private static PlaceSearchCommand command() {
@@ -300,5 +302,38 @@ class KakaoPlaceSearchClientTests {
 			.satisfies(thrown -> assertReason(thrown, Reason.AUTH));
 
 		server.verify();
+	}
+
+	private double requests(String outcome) {
+		var counter = registry.find(KakaoPlaceSearchClient.REQUEST_METRIC).tag("outcome", outcome).counter();
+		return counter == null ? 0 : counter.count();
+	}
+
+	@Test
+	@DisplayName("실제로 보낸 요청마다 결과별로 호출 수를 센다(재시도도 한 번으로 센다)")
+	void countsEveryRequestByOutcome() {
+		server.expect(requestTo(org.hamcrest.Matchers.startsWith(SEARCH_URL_PREFIX)))
+			.andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+		server.expect(requestTo(org.hamcrest.Matchers.startsWith(SEARCH_URL_PREFIX)))
+			.andRespond(withSuccess(ONE_DOCUMENT, MediaType.APPLICATION_JSON));
+		server.expect(requestTo(org.hamcrest.Matchers.startsWith(SEARCH_URL_PREFIX)))
+			.andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+		client("test-key").search(command());
+		assertThatThrownBy(() -> client("test-key").search(command()))
+			.satisfies(thrown -> assertReason(thrown, Reason.RATE_LIMIT));
+
+		assertThat(requests("server_error")).isEqualTo(1);
+		assertThat(requests("success")).isEqualTo(1);
+		assertThat(requests("rate_limit")).isEqualTo(1);
+		server.verify();
+	}
+
+	@Test
+	@DisplayName("API 키가 없어 요청을 보내지 않으면 호출 수에 넣지 않는다")
+	void doesNotCountWhenNoRequestIsSent() {
+		assertThatThrownBy(() -> client(" ").search(command())).isInstanceOf(PlaceUpstreamException.class);
+
+		assertThat(registry.find(KakaoPlaceSearchClient.REQUEST_METRIC).counters()).isEmpty();
 	}
 }
