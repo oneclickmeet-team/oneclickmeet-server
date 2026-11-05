@@ -8,6 +8,7 @@ import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceErrorCode;
 import com.hsu.oneclickmeet.domain.place.repository.SavedPlaceRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
+import jakarta.persistence.EntityManager;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -27,10 +28,13 @@ public class SavedPlaceService {
 	private static final PlaceProvider PROVIDER = PlaceProvider.KAKAO;
 
 	private final SavedPlaceRepository repository;
+	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
 
-	public SavedPlaceService(SavedPlaceRepository repository, PlatformTransactionManager transactionManager) {
+	public SavedPlaceService(SavedPlaceRepository repository, EntityManager entityManager,
+			PlatformTransactionManager transactionManager) {
 		this.repository = repository;
+		this.entityManager = entityManager;
 		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
@@ -86,6 +90,8 @@ public class SavedPlaceService {
 		SavedPlace created = repository.saveAndFlush(SavedPlace.create(memberId, PROVIDER, providerPlaceId,
 				request.name(), request.address(), request.roadAddress(), request.category(),
 				request.categoryGroupCode(), request.lat(), request.lng(), request.placeUrl()));
+		// 저장 시각은 DB가 마이크로초로 반올림해 보관하므로, 응답이 이후 조회와 같은 값이 되도록 DB 값을 다시 읽는다.
+		entityManager.refresh(created);
 		return new SaveResult(SavedPlaceResponse.from(created), true);
 	}
 

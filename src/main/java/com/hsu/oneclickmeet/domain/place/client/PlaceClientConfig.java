@@ -9,7 +9,7 @@ import org.springframework.web.client.RestClient;
 import java.net.http.HttpClient;
 
 @Configuration
-@EnableConfigurationProperties(KakaoLocalProperties.class)
+@EnableConfigurationProperties({KakaoLocalProperties.class, AiServerProperties.class})
 public class PlaceClientConfig {
 
 	@Bean
@@ -21,6 +21,19 @@ public class PlaceClientConfig {
 		requestFactory.setReadTimeout(properties.readTimeout());
 		return RestClient.builder()
 				.baseUrl(properties.baseUrl())
+				.requestFactory(requestFactory)
+				.build();
+	}
+
+	@Bean
+	RestClient aiServerRestClient(AiServerProperties properties) {
+		HttpClient httpClient = HttpClient.newBuilder()
+				.connectTimeout(properties.connectTimeout())
+				.build();
+		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+		requestFactory.setReadTimeout(properties.readTimeout());
+		return RestClient.builder()
+				.baseUrl(properties.configured() ? properties.baseUrl() : "http://ai-server.not-configured")
 				.requestFactory(requestFactory)
 				.build();
 	}
