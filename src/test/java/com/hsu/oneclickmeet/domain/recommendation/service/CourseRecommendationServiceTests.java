@@ -88,7 +88,7 @@ class CourseRecommendationServiceTests {
 	void candidateKeyIsStable() {
 		givenAreaCenterAndCandidates();
 		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of());
-		RecommendCoursesRequest request = new RecommendCoursesRequest(null, "SEONGSIN");
+		RecommendCoursesRequest request = new RecommendCoursesRequest(null, "SUNGSHIN");
 
 		List<String> first = service.recommend(MEMBER, request).courses().stream().map(c -> c.candidateKey()).toList();
 		List<String> second = service.recommend(MEMBER, request).courses().stream().map(c -> c.candidateKey()).toList();
@@ -175,7 +175,7 @@ class CourseRecommendationServiceTests {
 	void findsAreasByNameOrCode() {
 		assertThat(SupportedArea.find("서촌")).contains(SupportedArea.SEOCHON);
 		assertThat(SupportedArea.find(" yeonnam ")).contains(SupportedArea.YEONNAM);
-		assertThat(SupportedArea.find("성신여대입구역")).contains(SupportedArea.SEONGSIN);
+		assertThat(SupportedArea.find("성신여대입구역")).contains(SupportedArea.SUNGSHIN);
 		assertThat(SupportedArea.find("강남")).isEmpty();
 		assertThat(SupportedArea.find(null)).isEmpty();
 	}
