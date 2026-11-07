@@ -32,9 +32,12 @@ public class PlaceClientConfig {
 				.build();
 		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
 		requestFactory.setReadTimeout(properties.readTimeout());
-		return RestClient.builder()
+		RestClient.Builder builder = RestClient.builder()
 				.baseUrl(properties.configured() ? properties.baseUrl() : "http://ai-server.not-configured")
-				.requestFactory(requestFactory)
-				.build();
+				.requestFactory(requestFactory);
+		if (properties.hasServiceKey()) {
+			builder.defaultHeader("X-AI-Key", properties.serviceKey());
+		}
+		return builder.build();
 	}
 }

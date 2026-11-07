@@ -1,9 +1,11 @@
 package com.hsu.oneclickmeet.domain.place.controller;
 
 import com.hsu.oneclickmeet.domain.place.client.PlaceCandidate;
-import com.hsu.oneclickmeet.domain.place.client.PlaceNameExtractor;
+import com.hsu.oneclickmeet.domain.place.client.PlaceRecognizer;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchResult;
+import com.hsu.oneclickmeet.domain.place.client.Recognition;
+import com.hsu.oneclickmeet.domain.place.client.Recognition.RecognizedPlace;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException.Reason;
 import com.hsu.oneclickmeet.domain.place.service.PlaceResolveService;
@@ -30,7 +32,7 @@ class PlaceResolveControllerTests {
 
 	private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
 
-	private List<String> names = List.of("연우재");
+	private boolean found = true;
 	private RuntimeException extractorFailure;
 	private RuntimeException searchFailure;
 	private LocalValidatorFactoryBean validator;
@@ -38,18 +40,24 @@ class PlaceResolveControllerTests {
 
 	@BeforeEach
 	void setUp() {
-		PlaceNameExtractor extractor = new PlaceNameExtractor() {
+		PlaceRecognizer extractor = new PlaceRecognizer() {
 			@Override
-			public List<String> fromText(String sharedText) {
+			public Recognition recognizeText(String sharedText) {
 				if (extractorFailure != null) {
 					throw extractorFailure;
 				}
-				return names;
+				if (!found) {
+					return new Recognition("연남 카페", List.of());
+				}
+				return new Recognition("연우재", List.of(new RecognizedPlace(
+					new PlaceCandidate("1", "연우재", "서울 성북구 성북동1가 61", null, "카페", "CE7", 37.5894, 127.0044,
+						"http://place.map.kakao.com/1"),
+					"EXACT", List.of("이름 일치"), List.of())));
 			}
 
 			@Override
-			public List<String> fromImage(byte[] image, String contentType) {
-				return fromText("");
+			public Recognition recognizeImage(byte[] image, String contentType) {
+				return recognizeText("");
 			}
 		};
 		PlaceSearchClient search = command -> {
@@ -81,18 +89,22 @@ class PlaceResolveControllerTests {
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.status").value("CANDIDATES_FOUND"))
 			.andExpect(jsonPath("$.data.candidates[0].name").value("연우재"))
-			.andExpect(jsonPath("$.data.candidates[0].providerPlaceId").value("1"));
+			.andExpect(jsonPath("$.data.extractedQuery").value("연우재"))
+			.andExpect(jsonPath("$.data.candidates[0].providerPlaceId").value("1"))
+			.andExpect(jsonPath("$.data.candidates[0].matchType").value("EXACT"))
+			.andExpect(jsonPath("$.data.candidates[0].matchReasons[0]").value("이름 일치"));
 	}
 
 	@Test
 	@DisplayName("이름을 못 찾으면 NEEDS_SEARCH를 200으로 돌려준다")
 	void needsSearchWhenNoNames() throws Exception {
-		names = List.of();
+		found = false;
 
 		mvc.perform(post("/api/v1/places/resolve/link").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"sharedText\":\"https://naver.me/abc\"}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("NEEDS_SEARCH"))
+			.andExpect(jsonPath("$.data.extractedQuery").value("연남 카페"))
 			.andExpect(jsonPath("$.data.candidates").isEmpty());
 	}
 
@@ -103,7 +115,7 @@ class PlaceResolveControllerTests {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.error.errors[*].field").value(hasItem("sharedText")));
 		mvc.perform(post("/api/v1/places/resolve/link").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"sharedText\":\"" + "a".repeat(2001) + "\"}"))
+				.content("{\"sharedText\":\"" + "a".repeat(20001) + "\"}"))
 			.andExpect(status().isBadRequest());
 	}
 
@@ -127,7 +139,7 @@ class PlaceResolveControllerTests {
 	}
 
 	@Test
-	@DisplayName("AI 서버 오류는 숨기고 NEEDS_SEARCH로, 카카오 오류는 502로 응답한다")
+	@DisplayName("AI 서버 오류는 숨기고 이미지는 NEEDS_SEARCH로, 링크 폴백 중 카카오 오류는 502로 응답한다")
 	void hidesAiFailureButReportsKakaoFailure() throws Exception {
 		extractorFailure = new PlaceUpstreamException(Reason.NETWORK, "내부 상세");
 		mvc.perform(multipart("/api/v1/places/resolve/image")
@@ -135,10 +147,10 @@ class PlaceResolveControllerTests {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("NEEDS_SEARCH"));
 
-		extractorFailure = null;
+		extractorFailure = new PlaceUpstreamException(Reason.NETWORK, "내부 상세");
 		searchFailure = new PlaceUpstreamException(Reason.RATE_LIMIT, "내부 상세");
 		mvc.perform(post("/api/v1/places/resolve/link").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"sharedText\":\"연우재\"}"))
+				.content("{\"sharedText\":\"[네이버지도]\\n연우재\\nhttps://naver.me/abc\"}"))
 			.andExpect(status().isBadGateway())
 			.andExpect(jsonPath("$.error.code").value("PLACE-0502"));
 	}
