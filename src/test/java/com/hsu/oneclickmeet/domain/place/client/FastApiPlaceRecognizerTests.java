@@ -43,7 +43,7 @@ class FastApiPlaceRecognizerTests {
 	private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
 	private FastApiPlaceRecognizer recognizer(String baseUrl) {
-		return new FastApiPlaceRecognizer(builder.build(), new AiServerProperties(baseUrl, null, null, null));
+		return new FastApiPlaceRecognizer(builder.build(), new AiServerProperties(baseUrl, null, null, null, null));
 	}
 
 	private static void assertReason(Throwable thrown, Reason reason) {
@@ -205,7 +205,7 @@ class FastApiPlaceRecognizerTests {
 	@Test
 	@DisplayName("서비스 키가 설정되면 X-AI-Key 헤더로 보낸다")
 	void sendsServiceKeyHeader() {
-		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", Duration.ofSeconds(1), null);
+		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", Duration.ofSeconds(1), null, null);
 		RestClient.Builder keyed = RestClient.builder().baseUrl("https://ai.test");
 		if (properties.hasServiceKey()) {
 			keyed.defaultHeader("X-AI-Key", properties.serviceKey());
