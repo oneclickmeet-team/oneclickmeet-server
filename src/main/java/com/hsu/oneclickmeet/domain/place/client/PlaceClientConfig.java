@@ -31,6 +31,12 @@ public class PlaceClientConfig {
 		return aiRestClient(properties, properties.readTimeout());
 	}
 
+	/** 스크린샷 인식(P04) 전용. 비전 LLM 폴백을 기다릴 수 있도록 읽기 제한 시간이 더 길다. */
+	@Bean
+	RestClient aiImageRestClient(AiServerProperties properties) {
+		return aiRestClient(properties, properties.imageReadTimeout());
+	}
+
 	/** 코스 추천(R01) 전용. 인식보다 짧은 읽기 제한 시간을 쓴다. */
 	@Bean
 	RestClient aiRecommendRestClient(AiServerProperties properties) {

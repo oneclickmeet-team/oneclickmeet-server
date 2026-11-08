@@ -53,7 +53,7 @@ class FastApiCourseRecommenderTests {
 	private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
 	private FastApiCourseRecommender recommender(String baseUrl) {
-		return new FastApiCourseRecommender(builder.build(), new AiServerProperties(baseUrl, null, null, null, null));
+		return new FastApiCourseRecommender(builder.build(), new AiServerProperties(baseUrl, null, null, null, null, null));
 	}
 
 	private static SavedPlaceInput saved(long id, String categoryCode) {
@@ -161,7 +161,7 @@ class FastApiCourseRecommenderTests {
 	@Test
 	@DisplayName("서비스 키가 설정되면 X-AI-Key 헤더로 보낸다")
 	void sendsServiceKeyHeader() {
-		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", null, null, null);
+		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", null, null, null, null);
 		RestClient.Builder keyed = RestClient.builder().baseUrl("https://ai.test");
 		keyed.defaultHeader("X-AI-Key", properties.serviceKey());
 		MockRestServiceServer keyedServer = MockRestServiceServer.bindTo(keyed).build();
