@@ -46,11 +46,13 @@ public class FastApiPlaceRecognizer implements PlaceRecognizer {
 	private static final String KAKAO = "KAKAO";
 
 	private final RestClient restClient;
+	private final RestClient imageRestClient;
 	private final AiServerProperties properties;
 
 	public FastApiPlaceRecognizer(@Qualifier("aiServerRestClient") RestClient restClient,
-			AiServerProperties properties) {
+			@Qualifier("aiImageRestClient") RestClient imageRestClient, AiServerProperties properties) {
 		this.restClient = restClient;
+		this.imageRestClient = imageRestClient;
 		this.properties = properties;
 	}
 
@@ -76,7 +78,7 @@ public class FastApiPlaceRecognizer implements PlaceRecognizer {
 					return "image";
 				}
 			}, partHeaders));
-			return restClient.post()
+			return imageRestClient.post()
 					.uri("/internal/v1/place-image-recognitions")
 					.contentType(MediaType.MULTIPART_FORM_DATA)
 					.body(body)

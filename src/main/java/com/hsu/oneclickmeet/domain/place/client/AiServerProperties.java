@@ -9,11 +9,13 @@ import java.time.Duration;
  * 호출 없이 직접 검색으로 안내한다. 환경변수 AI_SERVER_BASE_URL로 주입한다.
  * serviceKey는 AI 서버의 AI_SERVICE_KEY와 같은 값이며 X-AI-Key 헤더로 보낸다(AI_SERVER_SERVICE_KEY).
  * 인식(P03·P04)은 OpenAI 호출을 포함해 오래 걸릴 수 있어 읽기 제한 시간 기본값을 30초로 둔다.
+ * 스크린샷 인식(P04)은 비전 LLM 폴백이 켜지면 최대 약 60초 걸릴 수 있어(AI 파트 문서) 읽기 제한 시간
+ * (imageReadTimeout)을 70초로 따로 둔다. 링크·텍스트 인식은 readTimeout(30초)을 그대로 쓴다.
  * 코스 추천(R01)은 AI 파트 권장대로 읽기 제한 시간(recommendReadTimeout)을 15초로 따로 둔다.
  */
 @ConfigurationProperties(prefix = "ai.server")
 public record AiServerProperties(String baseUrl, String serviceKey, Duration connectTimeout, Duration readTimeout,
-		Duration recommendReadTimeout) {
+		Duration imageReadTimeout, Duration recommendReadTimeout) {
 
 	public AiServerProperties {
 		if (baseUrl == null) {
@@ -27,6 +29,9 @@ public record AiServerProperties(String baseUrl, String serviceKey, Duration con
 		}
 		if (readTimeout == null) {
 			readTimeout = Duration.ofSeconds(30);
+		}
+		if (imageReadTimeout == null) {
+			imageReadTimeout = Duration.ofSeconds(70);
 		}
 		if (recommendReadTimeout == null) {
 			recommendReadTimeout = Duration.ofSeconds(15);

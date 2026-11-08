@@ -43,7 +43,7 @@ class FastApiPlaceRecognizerTests {
 	private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
 	private FastApiPlaceRecognizer recognizer(String baseUrl) {
-		return new FastApiPlaceRecognizer(builder.build(), new AiServerProperties(baseUrl, null, null, null, null));
+		return new FastApiPlaceRecognizer(builder.build(), builder.build(), new AiServerProperties(baseUrl, null, null, null, null, null));
 	}
 
 	private static void assertReason(Throwable thrown, Reason reason) {
@@ -205,7 +205,7 @@ class FastApiPlaceRecognizerTests {
 	@Test
 	@DisplayName("서비스 키가 설정되면 X-AI-Key 헤더로 보낸다")
 	void sendsServiceKeyHeader() {
-		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", Duration.ofSeconds(1), null, null);
+		AiServerProperties properties = new AiServerProperties("https://ai.test", "secret", Duration.ofSeconds(1), null, null, null);
 		RestClient.Builder keyed = RestClient.builder().baseUrl("https://ai.test");
 		if (properties.hasServiceKey()) {
 			keyed.defaultHeader("X-AI-Key", properties.serviceKey());
@@ -214,9 +214,19 @@ class FastApiPlaceRecognizerTests {
 		keyedServer.expect(requestTo(TEXT_URL)).andExpect(header("X-AI-Key", "secret"))
 			.andRespond(withSuccess(FOUND, MediaType.APPLICATION_JSON));
 
-		new FastApiPlaceRecognizer(keyed.build(), properties).recognizeText("x");
+		new FastApiPlaceRecognizer(keyed.build(), keyed.build(), properties).recognizeText("x");
 
 		keyedServer.verify();
 		assertThat(properties.readTimeout()).isEqualTo(Duration.ofSeconds(30));
+	}
+
+	@Test
+	@DisplayName("읽기 제한 시간은 링크·텍스트 30초, 이미지 70초(비전 폴백 대기), 코스 추천 15초가 기본이다")
+	void defaultReadTimeoutsDifferByCall() {
+		AiServerProperties properties = new AiServerProperties("https://ai.test", null, null, null, null, null);
+
+		assertThat(properties.readTimeout()).isEqualTo(Duration.ofSeconds(30));
+		assertThat(properties.imageReadTimeout()).isEqualTo(Duration.ofSeconds(70));
+		assertThat(properties.recommendReadTimeout()).isEqualTo(Duration.ofSeconds(15));
 	}
 }
