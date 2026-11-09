@@ -2,7 +2,7 @@
 
 - 범위: `GET /api/v1/places/search` — 장소 이름·주소로 검색해 **후보 목록만** 돌려준다. 저장은 하지 않는다(저장은 `POST /api/v1/saved-places`).
 - 담당: 승진 (`domain/place`)
-- 상태: **구현 완료(2026-11-05 갱신).** 초안의 가정 중 바뀐 것은 아래 "초안 대비 바뀐 점"에 모았다.
+- 상태: **구현 완료(2026-11-09 갱신).** 초안의 가정 중 바뀐 것은 아래 "초안 대비 바뀐 점"에 모았다.
 - 구현: #22(클라이언트), #58(서비스·API), #60(보관함), #64(링크·이미지로 장소 찾기), #72(주변 놀거리·호출 수 지표)
 
 ## 초안 대비 바뀐 점
@@ -16,12 +16,13 @@
 | 예외 기반 | #13 기반 예외를 상속 예정 | `PlaceUpstreamException`이 `BusinessException`을 상속(#13은 #25로 병합됨) |
 | 로그인 | ②에서 보호 | #68(Security·JWT)로 로그인이 필요하다. 토큰이 없거나 올바르지 않으면 JSON 401(`COMMON-0401`) |
 | 호출 수 지표(Micrometer) | PR 3에서 추가 | #72로 구현(아래 §4) |
+| 페이징 | `page`·`size` | **`cursor`·`size`**(#85, 2026-11-09 재원 합의: 앱에 공개하는 목록은 모두 커서). 응답은 `{items, nextCursor, hasNext}`. 커서는 카카오 `page` 번호를 감싼 불투명 값이며 검색어(공백 제거 후)·`size`가 다르면 400 |
 
 ## 1. 흐름
 
 ```text
-앱 ──GET /api/v1/places/search?query=…&page=1──▶ PlaceSearchController
-                                           │ 입력 검증 (query 1~100자, page ≥ 1, size 1~15)
+앱 ──GET /api/v1/places/search?query=…&cursor=…──▶ PlaceSearchController
+                                           │ 입력 검증 (query 1~100자, cursor 200자 이하, size 1~15)
                                            ▼
                                       PlaceSearchService
                                            │ 질의어 정규화(앞뒤 공백 제거), 페이지 상한 확인
@@ -46,8 +47,8 @@
 | 위치 | 클래스 | 역할 |
 |---|---|---|
 | `controller` | `PlaceSearchController` | 요청 바인딩·입력 검증·서비스 호출·응답 구성 |
-| `dto.request` | `PlaceSearchRequest` (record) | `query`, `page`(기본 1), `size`(기본 10) |
-| `dto.response` | `PlaceCandidateResponse`, `PlaceSearchResponse` (record) | 후보 1건, 후보 목록 + `page` + `hasNext` |
+| `dto.request` | `PlaceSearchRequest` (record) | `query`, `cursor`(선택), `size`(기본 10) |
+| `dto.response` | `PlaceCandidateResponse`, `PlaceSearchResponse` (record) | 후보 1건, 후보 목록(`items`) + `nextCursor` + `hasNext` |
 | `service` | `PlaceSearchService` | 정규화, 페이지 상한 확인, 클라이언트 호출, 응답 조립 |
 | `client` | `PlaceSearchClient` (interface), `PlaceSearchCommand`, `PlaceSearchResult`, `PlaceCandidate` | 검색 경계와 입출력 모델 |
 | `client` | `KakaoPlaceSearchClient` | 카카오 호출 구현(`RestClient`) |
@@ -59,12 +60,12 @@
 
 ## 3. API 계약
 
-요청: `GET /api/v1/places/search?query=한성대입구역 카페&page=1&size=10`
+요청: `GET /api/v1/places/search?query=한성대입구역 카페&size=10` (다음 쪽은 `&cursor=<이전 응답의 nextCursor>`)
 
 | 파라미터 | 규칙 |
 |---|---|
 | `query` | 필수, 공백 제거 후 1~100자 |
-| `page` | 기본 1, 1 이상 |
+| `cursor` | 선택. 첫 쪽은 생략하고 이후는 이전 응답의 `nextCursor` 그대로. 해석하지 않는다. 200자 이하 |
 | `size` | 기본 10, 1~15 |
 
 - `lat`, `lng`를 보내도 무시한다(카카오에 전달하지 않는다).
@@ -75,7 +76,7 @@
 {
   "success": true,
   "data": {
-    "candidates": [
+    "items": [
       {
         "providerPlaceId": "1424427941",
         "name": "연우재",
@@ -88,7 +89,7 @@
         "placeUrl": "http://place.map.kakao.com/1424427941"
       }
     ],
-    "page": 1,
+    "nextCursor": "cHMxfDFhMmIzYzR8MTB8Mg",
     "hasNext": true
   },
   "error": null
@@ -97,21 +98,22 @@
 
 - `provider`는 응답에 포함하지 않는다(현재 카카오 하나). 저장 API는 카카오로 간주한다.
 - 카카오 원본의 `phone` 등 쓰지 않는 필드는 읽지 않고 버린다. `roadAddress`가 빈 값이면 `null`이다.
-- 후보가 없을 때: `candidates: []`, `hasNext: false`.
+- 후보가 없을 때: `items: []`, `nextCursor: null`, `hasNext: false`.
+- 마지막 쪽(`hasNext: false`)에서는 `nextCursor`가 null이다. 검색어나 `size`를 바꾸고 이전 커서를 쓰거나 깨진 커서를 보내면 400(`COMMON-0400`)이다.
 
 ### 카카오 응답 사실 (2026-10-30 실제 호출로 확인)
 
 - 응답 필드: `documents[]`의 `id`, `place_name`, `address_name`, `road_address_name`, `category_name`, `category_group_code`, `x`(경도), `y`(위도), `place_url`(`http://`), 그리고 `meta.is_end`, `meta.pageable_count`. `x`·`y`는 문자열이다.
 - 한 요청의 `size`는 최대 15이고, 한 검색어로 받을 수 있는 결과는 **최대 45건**이다(`pageable_count`).
 - 결과 상한을 넘는 `page`를 요청하면 오류나 빈 목록이 아니라 **마지막 쪽을 다시 돌려준다**(`size=15`에서 `page=3`과 `page=4`의 결과가 같음을 확인).
-  - 그래서 서버가 `(page-1)×size ≥ 45`이면 카카오를 호출하지 않고 빈 결과(200)로 응답하고, `hasNext`는 카카오의 `is_end`가 거짓이면서 `page×size < 45`일 때만 참이다.
+  - 그래서 서버는 커서가 가리키는 `page`가 `(page-1)×size ≥ 45`이면 카카오를 호출하지 않고 빈 결과(200)로 응답하고, `hasNext`는 카카오의 `is_end`가 거짓이면서 `page×size < 45`일 때만 참이다.
 - 확인하지 못한 것: 카카오 공식 문서의 일일 호출 한도와 약관.
 
 ### 오류
 
 | 상황 | HTTP | 코드 |
 |---|---|---|
-| `query` 누락·길이 위반, `page`/`size` 범위 위반, 숫자가 아닌 값 | 400 | `COMMON-0400` (필드별 `errors` 포함) |
+| `query` 누락·길이 위반, `size` 범위 위반, 올바르지 않은 `cursor` | 400 | `COMMON-0400` (필드별 `errors` 포함) |
 | 로그인 안 됨 | 401 | `COMMON-0401` |
 | 카카오 호출 실패·한도 초과·잘못된 키·시간 초과·깨진 응답 | 502 | `PLACE-0502` |
 
@@ -142,9 +144,9 @@
 | API | 상태 |
 |---|---|
 | `POST` `GET` `GET/{id}` `DELETE` `/api/v1/saved-places` | 구현(#60). 저장은 멱등(새로 저장 201, 이미 저장 200), 목록은 커서 방식, 타인의 항목은 404 |
-| `POST /api/v1/places/resolve/link`, `/image` | 구현(#64). AI 서버 호출 계약은 협의 전 제안안, AI를 쓸 수 없으면 링크는 단순 규칙으로 대체·이미지는 `NEEDS_SEARCH` |
+| `POST /api/v1/places/resolve/link`, `/image` | 구현(#64, AI 서버 내부 API v2.1 연동 #76). 이미지 인식은 읽기 제한 시간 70초(#82). **실제 AI 서버 호출 검증은 아직**. AI를 쓸 수 없으면 링크는 단순 규칙으로 대체·이미지는 `NEEDS_SEARCH` |
 | `GET /api/v1/saved-places/{id}/nearby?category=CAFE\|RESTAURANT\|EXHIBITION\|PARK` | 구현(#72). 반경 1km, 가까운 순, 직선거리(`distanceMeters`) 포함, 기준 장소 제외 |
-| `POST /api/v1/recommendations/courses` | 구현(#66). 결과는 저장하지 않으며 `candidateKey`로 저장하는 연결은 `course` 계약 합의 필요 |
+| `POST /api/v1/recommendations/courses` | 구현(#66), AI 서버(R01)에 위임하도록 변경(#80). 방문 순서별 카테고리·필수 장소 입력. AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않으며 코스 저장은 재원이 스냅샷 방식으로 바꾼다 |
 | `POST /saved-places/{id}/share` | 미구현(`couple`/공유 영역과 합의 후) |
 
 ## 7. 테스트
@@ -154,11 +156,11 @@
 | 대상 | 방법 | 확인한 것 |
 |---|---|---|
 | `KakaoPlaceSearchClient` | `MockRestServiceServer` | 정상 응답 변환, 실제 카카오 응답 모양, 빈 결과, 도로명주소 공백→null, 5xx 재시도, 429·401·400 분류(재시도 없음), 연결 실패, 깨진 JSON, 좌표 오류, 키 없음, 결과별 호출 수 |
-| `PlaceSearchService` | 가짜 `PlaceSearchClient` | 정규화, 페이지 상한, 결과 조립 |
+| `PlaceSearchService` | 가짜 `PlaceSearchClient` | 정규화, 커서(다음 쪽 이동, 다른 검색어·size·깨진 커서 거절), 페이지 상한, 결과 조립 |
 | `PlaceSearchController` | 독립 MockMvc + 가짜 서비스 | 입력 검증 400, 성공 응답 모양, 502 응답에 내부 상세가 없음 |
 
 ## 8. 남은 일
 
 - [ ] 카카오 일일 한도·약관 확인, 호출 수 지표의 외부 노출·경보
 - [ ] 서버를 실제 키로 띄워 카카오와 붙는 end-to-end 확인(지금은 가짜 응답과 단발 직접 호출로만 확인)
-- [ ] AI 서버 호출 계약 확정(경로·필드)
+- [ ] 실제 AI 서버로 링크·이미지 인식, 코스 추천 호출 확인(시연용 주소·키는 11/11 전 수령 예정)
