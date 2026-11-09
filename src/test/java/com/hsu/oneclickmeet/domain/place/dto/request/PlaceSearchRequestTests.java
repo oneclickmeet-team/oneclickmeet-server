@@ -36,12 +36,12 @@ class PlaceSearchRequestTests {
 	}
 
 	@Test
-	@DisplayName("검색어만 있으면 page=1, size=10 기본값으로 유효하다")
+	@DisplayName("검색어만 있으면 size=10 기본값으로 유효하다")
 	void validWithDefaults() {
 		PlaceSearchRequest request = new PlaceSearchRequest("카페", null, null);
 
 		assertThat(validate(request)).isEmpty();
-		assertThat(request.page()).isEqualTo(1);
+		assertThat(request.cursor()).isNull();
 		assertThat(request.size()).isEqualTo(10);
 	}
 
@@ -49,35 +49,35 @@ class PlaceSearchRequestTests {
 	@ValueSource(strings = {"", "   "})
 	@DisplayName("검색어가 비어 있거나 공백뿐이면 거절한다")
 	void rejectsBlankQuery(String query) {
-		assertThat(validate(new PlaceSearchRequest(query, 1, 10))).isNotEmpty();
+		assertThat(validate(new PlaceSearchRequest(query, null, 10))).isNotEmpty();
 	}
 
 	@Test
 	@DisplayName("검색어가 null이면 거절한다")
 	void rejectsNullQuery() {
-		assertThat(validate(new PlaceSearchRequest(null, 1, 10))).isNotEmpty();
+		assertThat(validate(new PlaceSearchRequest(null, null, 10))).isNotEmpty();
 	}
 
 	@Test
 	@DisplayName("검색어는 100자까지 허용하고 101자부터 거절한다")
 	void limitsQueryLength() {
-		assertThat(validate(new PlaceSearchRequest("가".repeat(100), 1, 10))).isEmpty();
-		assertThat(validate(new PlaceSearchRequest("가".repeat(101), 1, 10))).isNotEmpty();
+		assertThat(validate(new PlaceSearchRequest("가".repeat(100), null, 10))).isEmpty();
+		assertThat(validate(new PlaceSearchRequest("가".repeat(101), null, 10))).isNotEmpty();
 	}
 
 	@Test
-	@DisplayName("page는 1 이상이어야 한다")
-	void rejectsPageBelowOne() {
-		assertThat(validate(new PlaceSearchRequest("카페", 0, 10))).isNotEmpty();
-		assertThat(validate(new PlaceSearchRequest("카페", 1, 10))).isEmpty();
+	@DisplayName("cursor는 200자까지만 허용한다")
+	void limitsCursorLength() {
+		assertThat(validate(new PlaceSearchRequest("카페", "a".repeat(200), 10))).isEmpty();
+		assertThat(validate(new PlaceSearchRequest("카페", "a".repeat(201), 10))).isNotEmpty();
 	}
 
 	@Test
 	@DisplayName("size는 1~15만 허용한다")
 	void limitsSizeRange() {
-		assertThat(validate(new PlaceSearchRequest("카페", 1, 0))).isNotEmpty();
-		assertThat(validate(new PlaceSearchRequest("카페", 1, 16))).isNotEmpty();
-		assertThat(validate(new PlaceSearchRequest("카페", 1, 1))).isEmpty();
-		assertThat(validate(new PlaceSearchRequest("카페", 1, 15))).isEmpty();
+		assertThat(validate(new PlaceSearchRequest("카페", null, 0))).isNotEmpty();
+		assertThat(validate(new PlaceSearchRequest("카페", null, 16))).isNotEmpty();
+		assertThat(validate(new PlaceSearchRequest("카페", null, 1))).isEmpty();
+		assertThat(validate(new PlaceSearchRequest("카페", null, 15))).isEmpty();
 	}
 }
