@@ -1,14 +1,81 @@
-# 회원·장소 데이터 모델 및 인증·API 계약 제안 (초안)
+# 회원·장소 데이터 모델 및 인증·API 계약
 
 - 작성: 승진 (member · place 담당)
-- 상태: **제안 단계 — 재원과 합의 전에는 확정이 아님**
+- 상태: **구현 반영(2026-11-09).** 맨 앞 "구현 결과"가 현재 기준이고, 그 아래 §0~§6은 10/30 제안 원문(결정 기록)이다. 둘이 다르면 "구현 결과"가 맞다.
 - 승진 결정(10/30): 장소는 **A안(`saved_places` 한 테이블)으로 시작**한다. 필요해지면 B안(`places` 분리)으로 옮긴다(§2.2).
 - 기준 자료: `main`@3fd3ce9 (#14 머지 후), `docs/conventions.md`, `CODEOWNERS`, 백엔드 TRD 초안 v0.1(연경, 10/14), 기능 명세서 v0.1
 - 확인하지 못한 것: TRD v1.0(10/18, 재원 작성)의 API 49개 목록 원문. 아래 API 목록은 TRD v1.0과 대조해야 한다.
 
 ---
 
-## 0. 먼저 알아둘 현재 상태
+## 구현 결과 (2026-11-09)
+
+### 데이터 모델
+
+| 테이블 | 실제 구현 | 제안과 다른 점 |
+|---|---|---|
+| `members` (#68) | `id`(IDENTITY), `name`(닉네임, NOT NULL), `email`(NULL), `provider`(`KAKAO`/`GOOGLE`), `provider_user_id`, `created_at`, `updated_at`. 유니크 (`provider`, `provider_user_id`) | 컬럼 이름이 `auth_provider`가 아니라 `provider`. `password_hash` 없음(이메일 가입 제외). `course`·`couple`·`comment` 코드가 `members(id, name)`을 직접 조회하므로 `name`을 유지했고, 다른 도메인의 통합 테스트가 `id, name`만 넣기 때문에 `provider`·`provider_user_id`는 DB에서 NULL 허용(가입 코드는 항상 채움). 테스트가 정리되면 NOT NULL로 바꾼다 |
+| `refresh_tokens` (#68) | `member_id`, `token_hash`(SHA-256, 유니크), `expires_at`, `revoked_at` | 제안에 없던 테이블. 갱신 토큰 원문은 저장하지 않는다 |
+| `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `source_url`·`hours`는 미구현 |
+| `activities`, `notifications` (#62) | 회원별 활동 기록과 알림(읽음 시각) | 제안 범위 밖이던 영역 |
+
+- **코스와 보관함(§2.3):** 재원의 `course`는 `CoursePlace`에 `original_place_id`(보관함 장소 번호)와 저장 시점의 `place_name`을 두고, 장소 이름은 `CoursePlaceLookup`으로 조회한다. 이 인터페이스를 장소 도메인이 구현했다(`SavedPlaceCourseLookup`, 본인의 보관함 장소일 때만 이름 반환, #60). 좌표 등 스냅샷 컬럼 추가는 하지 않은 상태다. **시연 전에 코스 저장을 장소 스냅샷 방식으로 바꾼다**(재원, 2026-11-09): 보관함에 없는 외부 추천 장소도 코스에 담을 수 있어야 하고, 코스를 저장해도 보관함은 그대로다. 요청 필드와 기존 코스 호환은 재원이 정리해 앱 팀에 공유한다.
+
+### 인증 (#68, 재원 승인 후 병합)
+
+- 소셜 로그인(카카오·구글)만 구현했다. 이메일 가입·로그인은 처음에는 제외했으나 **시연에 포함하기로 해 재원이 추가한다**(2026-11-09, §3.1, §5-5).
+- 앱이 받은 증표를 서버가 제공자에게 확인한다: 카카오는 `access_token_info`로 **우리 앱(app_id)에 발급된 토큰인지** 확인한 뒤 `v2/user/me`, 구글은 `tokeninfo`의 `aud`·`iss`. 앱 번호(`KAKAO_LOGIN_APP_ID`)·클라이언트 ID(`GOOGLE_LOGIN_CLIENT_ID`)가 없으면 로그인이 동작하지 않는다.
+- 토큰: 접근 토큰 JWT(HS256, 30분), 갱신 토큰(14일, 한 번 쓰면 폐기·재발급, 이미 쓴 토큰이 다시 오면 그 회원의 갱신 토큰을 모두 폐기). 비밀키는 `JWT_SECRET`(32바이트 이상). 유효 시간은 제안값이며 정책 확정 시 조정한다.
+- 현재 사용자 표현(§3.3, §5-4): **`@AuthenticationPrincipal Long memberId`** 한 가지.
+- 보안 설정 위치(§3.3, §5-3): `SecurityFilterChain`은 `global/config`, JWT 발급·검증은 `global/security`, 로그인·회원 로직은 `domain/member`.
+- 공개 경로: `POST /api/v1/auth/login/*`, `POST /api/v1/auth/refresh`, `GET /actuator/health`. 나머지는 로그인 필요, 실패 시 JSON 401(`COMMON-0401`).
+
+### API (모든 경로가 `/api/v1` 아래)
+
+| API | 상태 |
+|---|---|
+| `POST /auth/login/kakao`, `/auth/login/google`, `/auth/refresh`, `/auth/logout` | 구현(#68) |
+| `GET` · `PATCH /members/me` | 구현(#68). 수정은 닉네임만 |
+| `DELETE /members/me` | 개발하지 않음(시연에 쓰이지 않아 제외, 2026-11-08, §5-6) |
+| `GET /places/search` | 구현(#22, #58). 커서 방식으로 변경(#85): `cursor`·`size`, 응답 `items`·`nextCursor`·`hasNext` |
+| `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82). 실제 AI 서버 호출 검증은 아직 |
+| `POST` · `GET` · `GET /{id}` · `DELETE /saved-places` | 구현(#60). 같은 장소 다시 저장은 409가 아니라 **기존 항목과 200**(새로 저장은 201). 목록은 커서 방식(`items`, `nextCursor`, `hasNext`) |
+| `GET /saved-places/{id}/nearby` | 구현(#72) |
+| `POST /saved-places/{id}/share` | 미구현(공유 영역과 합의 후) |
+| `POST /recommendations/courses` | 구현(#66). AI 서버(R01)에 위임하도록 변경(#80): 방문 순서별 카테고리(`categorySequence`)·필수 장소 위치(`requiredPlaceOrder`) 입력, AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않음 |
+| `GET /activities`, `GET /notifications`, `PATCH /notifications/{id}/read` | 구현(#62) |
+| `POST /devices`, `POST /devices/unregister` | 구현(#74). 푸시용 기기 토큰 등록·해제. 실제 FCM 전송은 후속 |
+
+### 오류 코드 (§3.4, §5-7)
+
+- #13(#25로 병합)의 `ErrorCode` 구조를 따른다: 영역 + HTTP 상태. 같은 영역·같은 상태가 여럿이면 끝자리를 바꾼다(예: `MEMBER-0401` 소셜 증표 오류, `MEMBER-0402` 갱신 토큰 오류).
+- 사용 중인 도메인 코드: `PLACE-0404`, `PLACE-0502`, `MEMBER-0401`, `MEMBER-0402`, `MEMBER-0404`, `MEMBER-0502`, `NOTIFICATION-0404`, `RECOMMENDATION-0400`, `RECOMMENDATION-0401`, `RECOMMENDATION-0502`(AI 추천 서버 실패).
+
+### §5 질문의 현재 상태
+
+| 질문 | 상태 |
+|---|---|
+| 1. 테이블 이름·PK 전략 | 새 테이블은 컨벤션대로 복수형 snake_case + `IDENTITY` |
+| 2. 코스의 장소 참조 방식 | 위 "코스와 보관함"처럼 `original_place_id` + 이름 조회로 진행했으나, **시연 전에 스냅샷 방식으로 변경**하기로 함(재원, 2026-11-09) |
+| 3. Security 설정 위치 | `global/config`(재원 승인) |
+| 4. 현재 사용자 표현 | `@AuthenticationPrincipal Long memberId` |
+| 5. 이메일 가입 | 카카오·구글 구현. 이메일 가입·로그인은 시연에 포함하기로 해 재원이 추가 예정 |
+| 6. 탈퇴 처리 | **개발하지 않음**(시연에 쓰이지 않음, 2026-11-08) |
+| 7. 도메인 오류 코드 | #25의 `ErrorCode` 구조로 해결 |
+
+### 아직 남은 것
+
+- 공동 보관함 공유, 메모의 보관함 장소 접근 확인(`MemoTargetAccess`의 `TODO(#19)`, 재원 영역): 개인 장소(`PLACE`)와 공동 장소(`SHARED_PLACE`) 메모를 모두 연결한다. 공동 장소는 공동 보관함 대상 ID·관계별 접근 권한·공유 취소/삭제 시 메모 처리 규칙을 먼저 맞춘다.
+- 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
+- 코스 저장의 스냅샷 방식 전환, 이메일 회원가입·로그인(재원, 시연 전).
+- 업로드 한도 설정(파일당 5MB, 요청 전체 6MB, 재원 영역), 토큰 유효 시간 정책 확정. `.env.example`의 환경변수 항목은 #84에서 추가했다.
+- 실제 AI 서버 호출 검증(시연용 주소·키는 11/11 전 수령 예정), FCM 실제 전송(후속).
+- 보관함에 AI 카테고리 코드(`categoryCode`)를 저장할지는 보류했다. 지금은 카카오 `categoryGroupCode`를 추천 요청 때 AI 코드로 변환하고, 매핑이 안 되는 값은 AI가 추론한다. 저장하려면 인식·직접 검색에서 값을 어떻게 채울지와 기존 보관함의 빈 값 처리를 먼저 맞춘 뒤 스키마 변경을 검토한다.
+- API 목록을 TRD v1.0과 대조, ERD(DBML, #10)에 실제 테이블 반영.
+
+---
+
+## 0. 먼저 알아둘 현재 상태 (10/30 제안 당시)
 
 | 항목 | 현재 `main` 상태 | 이 제안에 미치는 영향 |
 |---|---|---|
