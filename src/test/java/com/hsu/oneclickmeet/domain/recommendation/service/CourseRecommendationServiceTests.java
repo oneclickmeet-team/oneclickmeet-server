@@ -1,26 +1,29 @@
 package com.hsu.oneclickmeet.domain.recommendation.service;
 
-import com.hsu.oneclickmeet.domain.place.client.PlaceCandidate;
-import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
-import com.hsu.oneclickmeet.domain.place.client.PlaceSearchCommand;
-import com.hsu.oneclickmeet.domain.place.client.PlaceSearchResult;
 import com.hsu.oneclickmeet.domain.place.entity.PlaceProvider;
 import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
-import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
-import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException.Reason;
+import com.hsu.oneclickmeet.domain.place.exception.PlaceErrorCode;
 import com.hsu.oneclickmeet.domain.place.repository.SavedPlaceRepository;
+import com.hsu.oneclickmeet.domain.recommendation.client.CourseRecommendationCommand;
+import com.hsu.oneclickmeet.domain.recommendation.client.CourseRecommendations;
+import com.hsu.oneclickmeet.domain.recommendation.client.CourseRecommendations.Course;
+import com.hsu.oneclickmeet.domain.recommendation.client.CourseRecommendations.Place;
+import com.hsu.oneclickmeet.domain.recommendation.client.CourseRecommender;
 import com.hsu.oneclickmeet.domain.recommendation.dto.request.RecommendCoursesRequest;
+import com.hsu.oneclickmeet.domain.recommendation.dto.request.RecommendCoursesRequest.Anchor;
+import com.hsu.oneclickmeet.domain.recommendation.dto.request.RecommendCoursesRequest.AnchorType;
 import com.hsu.oneclickmeet.domain.recommendation.dto.response.CourseRecommendationResponse;
+import com.hsu.oneclickmeet.domain.recommendation.dto.response.CourseRecommendationResponse.RecommendedPlace;
 import com.hsu.oneclickmeet.domain.recommendation.dto.response.CourseRecommendationResponse.Status;
+import com.hsu.oneclickmeet.domain.recommendation.exception.RecommendationErrorCode;
+import com.hsu.oneclickmeet.domain.recommendation.exception.RecommendationUpstreamException;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,16 +35,28 @@ import static org.mockito.Mockito.when;
 class CourseRecommendationServiceTests {
 
 	private static final long MEMBER = 7L;
-	private static final double LAT = 37.5927;
-	private static final double LNG = 127.0165;
+	private static final List<CourseCategory> SEQUENCE = List.of(CourseCategory.MEAL, CourseCategory.CAFE,
+		CourseCategory.WALK);
 
 	private final SavedPlaceRepository savedRepository = mock(SavedPlaceRepository.class);
-	private final FakeSearch search = new FakeSearch();
-	private final CourseRecommendationService service = new CourseRecommendationService(savedRepository, search,
+	private final FakeRecommender recommender = new FakeRecommender();
+	private final CourseRecommendationService service = new CourseRecommendationService(savedRepository, recommender,
 		mock(PlatformTransactionManager.class));
 
-	private static PlaceCandidate candidate(String id, String group, double dLat, double dLng) {
-		return new PlaceCandidate(id, "장소 " + id, "주소", null, "음식점", group, LAT + dLat, LNG + dLng, null);
+	private static SavedPlace saved(long id, String group, String road) {
+		SavedPlace place = SavedPlace.create(MEMBER, PlaceProvider.KAKAO, "kakao-" + id, "내 장소 " + id, "지번 주소 " + id,
+			road, "음식점", group, 37.5, 127.0, "http://place.map.kakao.com/" + id);
+		ReflectionTestUtils.setField(place, "id", id);
+		return place;
+	}
+
+	private static RecommendCoursesRequest region(String regionId) {
+		return new RecommendCoursesRequest(new Anchor(AnchorType.REGION, regionId, null), 3, SEQUENCE, null, null);
+	}
+
+	private static RecommendCoursesRequest place(long placeId, int requiredOrder, List<String> exclude) {
+		return new RecommendCoursesRequest(new Anchor(AnchorType.PLACE, null, placeId), 3, SEQUENCE, requiredOrder,
+			exclude);
 	}
 
 	private static String code(Throwable thrown) {
@@ -49,150 +64,161 @@ class CourseRecommendationServiceTests {
 		return ((BusinessException) thrown).getErrorCode().getCode();
 	}
 
-	private void givenAreaCenterAndCandidates() {
-		search.results.put("성신여대입구역", List.of(candidate("center", "SW8", 0, 0)));
-		search.results.put("카페", List.of(candidate("c1", "CE7", 0.001, 0), candidate("c2", "CE7", 0.003, 0.001)));
-		search.results.put("맛집", List.of(candidate("f1", "FD6", 0.002, 0), candidate("f2", "FD6", 0.004, 0)));
-		search.results.put("전시", List.of(candidate("a1", "CT1", 0.0, 0.002)));
+	private static Place place(int order, String source, Long placeId, String providerPlaceId, String name) {
+		return new Place(order, source, false, placeId, providerPlaceId, name, "AI 주소", "AI 도로명", 37.1, 127.1, "CAFE",
+			"카페", "http://ai.example/" + order, order == 1 ? null : 5);
 	}
 
 	@Test
-	@DisplayName("지역으로 추천하면 지역 중심을 찾고 그 위치를 기준으로 카페·맛집·전시를 검색해 코스를 만든다")
-	void recommendsByArea() {
-		givenAreaCenterAndCandidates();
-		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of());
+	@DisplayName("지역 기준이면 지역 ID·카테고리 순서·보관함 장소를 AI 서버에 보내고 필수 장소 위치는 보내지 않는다")
+	void sendsRegionRequest() {
+		when(savedRepository.findTop500ByMemberIdOrderByIdDesc(MEMBER))
+			.thenReturn(List.of(saved(11, "CE7", "도로명 11"), saved(12, "FD6", null), saved(13, "SW8", null)));
+		recommender.result = new CourseRecommendations(List.of(), "INSUFFICIENT_PLACES");
 
-		CourseRecommendationResponse response = service.recommend(MEMBER, new RecommendCoursesRequest(null, "성신여대입구역"));
+		service.recommend(MEMBER, region("SUNGSHIN"));
 
-		assertThat(response.status()).isEqualTo(Status.OK);
-		assertThat(response.courses()).isNotEmpty().hasSizeLessThanOrEqualTo(3);
-		assertThat(response.courses()).allSatisfy(course -> {
-			assertThat(course.candidateKey()).isNotBlank();
-			assertThat(course.places()).hasSizeBetween(3, 5);
-			assertThat(course.places().get(0).walkMinutesFromPrevious()).isNull();
-			assertThat(course.places().subList(1, course.places().size()))
-				.allSatisfy(place -> assertThat(place.walkMinutesFromPrevious()).isBetween(0, 10));
-		});
-		assertThat(search.commands.get(0).query()).isEqualTo("성신여대입구역");
-		assertThat(search.commands.get(0).hasLocation()).isFalse();
-		assertThat(search.commands.subList(1, search.commands.size())).extracting(PlaceSearchCommand::query)
-			.containsExactly("카페", "맛집", "전시");
-		assertThat(search.commands.subList(1, search.commands.size())).allSatisfy(command -> {
-			assertThat(command.lat()).isEqualTo(LAT);
-			assertThat(command.lng()).isEqualTo(LNG);
-		});
+		CourseRecommendationCommand command = recommender.last;
+		assertThat(command.regionId()).isEqualTo("SUNGSHIN");
+		assertThat(command.anchorPlace()).isNull();
+		assertThat(command.placeCount()).isEqualTo(3);
+		assertThat(command.categorySequence()).containsExactly("MEAL", "CAFE", "WALK");
+		assertThat(command.requiredPlaceOrder()).isNull();
+		assertThat(command.excludeCandidateKeys()).isEmpty();
+		assertThat(command.savedPlaces()).extracting("placeId").containsExactly(11L, 12L, 13L);
+		assertThat(command.savedPlaces()).extracting("categoryCode").containsExactly("CAFE", "MEAL", null);
+		assertThat(command.savedPlaces().get(0).address()).isEqualTo("도로명 11");
+		assertThat(command.savedPlaces().get(1).address()).isEqualTo("지번 주소 12");
 	}
 
 	@Test
-	@DisplayName("같은 구성의 코스는 같은 candidateKey를 갖는다")
-	void candidateKeyIsStable() {
-		givenAreaCenterAndCandidates();
-		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of());
-		RecommendCoursesRequest request = new RecommendCoursesRequest(null, "SEONGSIN");
+	@DisplayName("화면 이름으로 지역을 보내도 AI 서버에는 지역 ID로 보낸다")
+	void convertsDisplayNameToRegionId() {
+		recommender.result = new CourseRecommendations(List.of(), "INSUFFICIENT_PLACES");
 
-		List<String> first = service.recommend(MEMBER, request).courses().stream().map(c -> c.candidateKey()).toList();
-		List<String> second = service.recommend(MEMBER, request).courses().stream().map(c -> c.candidateKey()).toList();
+		service.recommend(MEMBER, region("한성대입구역"));
 
-		assertThat(first).isEqualTo(second).doesNotHaveDuplicates();
+		assertThat(recommender.last.regionId()).isEqualTo("HANSUNG");
 	}
 
 	@Test
-	@DisplayName("기준 장소로 추천하면 그 장소가 모든 코스의 첫 장소이고 보관함 번호를 돌려준다")
-	void recommendsByAnchor() {
-		SavedPlace anchor = SavedPlace.create(MEMBER, PlaceProvider.KAKAO, "anchor", "내 장소", "주소", null, "음식점",
-			"CE7", LAT, LNG, null);
-		when(savedRepository.findByIdAndMemberId(5L, MEMBER)).thenReturn(Optional.of(anchor));
-		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of(anchor));
-		givenAreaCenterAndCandidates();
+	@DisplayName("장소 기준이면 기준 장소·필수 위치·제외 키를 보내고 기준 장소는 보관함 목록에서 뺀다")
+	void sendsPlaceAnchorRequest() {
+		SavedPlace anchor = saved(11, "CE7", null);
+		when(savedRepository.findTop500ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of(anchor, saved(12, "FD6", null)));
+		when(savedRepository.findByIdAndMemberId(11L, MEMBER)).thenReturn(Optional.of(anchor));
+		recommender.result = new CourseRecommendations(List.of(), "INSUFFICIENT_PLACES");
 
-		CourseRecommendationResponse response = service.recommend(MEMBER, new RecommendCoursesRequest(5L, null));
+		service.recommend(MEMBER, place(11, 2, List.of("crs_a", "crs_b")));
 
-		assertThat(response.status()).isEqualTo(Status.OK);
-		assertThat(response.courses()).allSatisfy(course ->
-			assertThat(course.places().get(0).providerPlaceId()).isEqualTo("anchor"));
-		assertThat(search.commands).extracting(PlaceSearchCommand::query).doesNotContain("성신여대입구역");
-		assertThat(search.commands).allSatisfy(command -> {
-			assertThat(command.lat()).isEqualTo(LAT);
-			assertThat(command.lng()).isEqualTo(LNG);
-		});
+		CourseRecommendationCommand command = recommender.last;
+		assertThat(command.regionId()).isNull();
+		assertThat(command.anchorPlace().placeId()).isEqualTo(11L);
+		assertThat(command.requiredPlaceOrder()).isEqualTo(2);
+		assertThat(command.excludeCandidateKeys()).containsExactly("crs_a", "crs_b");
+		assertThat(command.savedPlaces()).extracting("placeId").containsExactly(12L);
 	}
 
 	@Test
-	@DisplayName("기준 장소와 지역을 둘 다 보내거나 둘 다 안 보내면 거절한다")
-	void requiresExactlyOneStart() {
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(1L, "잠실")))
-			.satisfies(thrown -> assertThat(code(thrown)).isEqualTo("RECOMMENDATION-0400"));
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(null, " ")))
-			.satisfies(thrown -> assertThat(code(thrown)).isEqualTo("RECOMMENDATION-0400"));
-		assertThat(search.commands).isEmpty();
-	}
-
-	@Test
-	@DisplayName("지원하지 않는 지역은 지역을 넓히지 않고 안내와 함께 거절한다")
-	void rejectsUnsupportedArea() {
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(null, "강남")))
+	@DisplayName("지원하지 않는 지역이면 400이고 AI 서버를 부르지 않는다")
+	void rejectsUnsupportedRegion() {
+		assertThatThrownBy(() -> service.recommend(MEMBER, region("강남")))
 			.satisfies(thrown -> assertThat(code(thrown)).isEqualTo("RECOMMENDATION-0401"));
-		assertThat(search.commands).isEmpty();
+		assertThat(recommender.last).isNull();
 	}
 
 	@Test
-	@DisplayName("내 보관함에 없거나 다른 회원의 기준 장소는 404다")
-	void anchorMustBeMine() {
+	@DisplayName("내 보관함에 없는 기준 장소(남의 장소 포함)는 404이고 AI 서버를 부르지 않는다")
+	void rejectsUnknownAnchor() {
 		when(savedRepository.findByIdAndMemberId(anyLong(), anyLong())).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(99L, null)))
-			.satisfies(thrown -> assertThat(code(thrown)).isEqualTo("PLACE-0404"));
-		assertThat(search.commands).isEmpty();
+		assertThatThrownBy(() -> service.recommend(MEMBER, place(99, 1, null)))
+			.isInstanceOfSatisfying(BusinessException.class,
+				thrown -> assertThat(thrown.getErrorCode()).isEqualTo(PlaceErrorCode.NOT_FOUND));
+		assertThat(recommender.last).isNull();
 	}
 
 	@Test
-	@DisplayName("후보가 부족하면 NOT_ENOUGH_CANDIDATES와 빈 목록을 돌려준다")
-	void notEnoughCandidates() {
-		search.results.put("잠실역", List.of(candidate("center", "SW8", 0, 0)));
-		search.results.put("카페", List.of(candidate("c1", "CE7", 0.001, 0)));
-		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of());
+	@DisplayName("보관함 장소는 우리 DB 값으로, 외부 후보는 AI 서버 값으로 채워 돌려준다")
+	void mapsResult() {
+		SavedPlace owned = saved(11, "CE7", "도로명 11");
+		when(savedRepository.findTop500ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of(owned));
+		recommender.result = new CourseRecommendations(List.of(new Course("crs_x", "성신 코스", 9, List.of(
+			place(1, "PERSONAL", 11L, null, "AI가 부른 이름"),
+			place(2, "EXTERNAL", null, "ext-1", "외부 카페")))), null);
 
-		CourseRecommendationResponse response = service.recommend(MEMBER, new RecommendCoursesRequest(null, "잠실"));
+		CourseRecommendationResponse response = service.recommend(MEMBER, region("JAMSIL"));
+
+		assertThat(response.status()).isEqualTo(Status.OK);
+		assertThat(response.reason()).isNull();
+		var course = response.courses().get(0);
+		assertThat(course.candidateKey()).isEqualTo("crs_x");
+		assertThat(course.title()).isEqualTo("성신 코스");
+		assertThat(course.totalWalkMinutes()).isEqualTo(9);
+		RecommendedPlace mine = course.places().get(0);
+		assertThat(mine.savedPlaceId()).isEqualTo(11L);
+		assertThat(mine.providerPlaceId()).isEqualTo("kakao-11");
+		assertThat(mine.name()).isEqualTo("내 장소 11");
+		assertThat(mine.address()).isEqualTo("지번 주소 11");
+		assertThat(mine.roadAddress()).isEqualTo("도로명 11");
+		assertThat(mine.placeUrl()).isEqualTo("http://place.map.kakao.com/11");
+		assertThat(mine.walkMinutesFromPrevious()).isNull();
+		RecommendedPlace external = course.places().get(1);
+		assertThat(external.savedPlaceId()).isNull();
+		assertThat(external.providerPlaceId()).isEqualTo("ext-1");
+		assertThat(external.name()).isEqualTo("외부 카페");
+		assertThat(external.address()).isEqualTo("AI 주소");
+		assertThat(external.category()).isEqualTo("카페");
+		assertThat(external.categoryCode()).isEqualTo("CAFE");
+		assertThat(external.walkMinutesFromPrevious()).isEqualTo(5);
+	}
+
+	@Test
+	@DisplayName("코스가 없으면 NOT_ENOUGH_CANDIDATES와 AI 서버가 준 이유를 돌려준다")
+	void returnsNotEnoughWithReason() {
+		recommender.result = new CourseRecommendations(List.of(), "NO_MORE_COURSES");
+
+		CourseRecommendationResponse response = service.recommend(MEMBER, region("HYEHWA"));
 
 		assertThat(response.status()).isEqualTo(Status.NOT_ENOUGH_CANDIDATES);
+		assertThat(response.reason()).isEqualTo("NO_MORE_COURSES");
 		assertThat(response.courses()).isEmpty();
 	}
 
 	@Test
-	@DisplayName("카카오 검색이 실패하면 그대로 실패하고, 지역 중심을 못 찾아도 실패한다")
-	void propagatesSearchFailures() {
-		when(savedRepository.findTop200ByMemberIdOrderByIdDesc(MEMBER)).thenReturn(List.of());
-		search.failure = new PlaceUpstreamException(Reason.RATE_LIMIT, "limit");
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(null, "혜화"))).isSameAs(search.failure);
+	@DisplayName("AI 서버를 쓸 수 없으면 다른 방식으로 대신하지 않고 502를 그대로 올린다")
+	void doesNotFallBackWhenAiServerFails() {
+		recommender.failure = new RecommendationUpstreamException(null);
 
-		search.failure = null;
-		assertThatThrownBy(() -> service.recommend(MEMBER, new RecommendCoursesRequest(null, "혜화")))
-			.isInstanceOf(PlaceUpstreamException.class);
+		assertThatThrownBy(() -> service.recommend(MEMBER, region("SEOCHON")))
+			.isInstanceOfSatisfying(BusinessException.class,
+				thrown -> assertThat(thrown.getErrorCode()).isEqualTo(RecommendationErrorCode.UPSTREAM_FAILURE));
 	}
 
 	@Test
-	@DisplayName("지원 지역은 화면 이름이나 영문 이름으로 찾는다")
-	void findsAreasByNameOrCode() {
-		assertThat(SupportedArea.find("서촌")).contains(SupportedArea.SEOCHON);
-		assertThat(SupportedArea.find(" yeonnam ")).contains(SupportedArea.YEONNAM);
-		assertThat(SupportedArea.find("성신여대입구역")).contains(SupportedArea.SEONGSIN);
-		assertThat(SupportedArea.find("강남")).isEmpty();
-		assertThat(SupportedArea.find(null)).isEmpty();
+	@DisplayName("카카오 분류 코드는 AI 카테고리로 바꾸고 대응이 없으면 null이다")
+	void mapsKakaoGroupCodes() {
+		assertThat(CourseCategory.fromKakaoGroupCode("FD6")).isEqualTo(CourseCategory.MEAL);
+		assertThat(CourseCategory.fromKakaoGroupCode("CE7")).isEqualTo(CourseCategory.CAFE);
+		assertThat(CourseCategory.fromKakaoGroupCode("CT1")).isEqualTo(CourseCategory.CULTURE);
+		assertThat(CourseCategory.fromKakaoGroupCode("AT4")).isEqualTo(CourseCategory.WALK);
+		assertThat(CourseCategory.fromKakaoGroupCode("SW8")).isNull();
+		assertThat(CourseCategory.fromKakaoGroupCode(null)).isNull();
 	}
 
-	private static class FakeSearch implements PlaceSearchClient {
+	private static class FakeRecommender implements CourseRecommender {
 
-		private final List<PlaceSearchCommand> commands = new ArrayList<>();
-		private final Map<String, List<PlaceCandidate>> results = new HashMap<>();
-		private RuntimeException failure;
+		CourseRecommendationCommand last;
+		CourseRecommendations result = new CourseRecommendations(List.of(), null);
+		RuntimeException failure;
 
 		@Override
-		public PlaceSearchResult search(PlaceSearchCommand command) {
-			commands.add(command);
+		public CourseRecommendations recommend(CourseRecommendationCommand command) {
+			last = command;
 			if (failure != null) {
 				throw failure;
 			}
-			return new PlaceSearchResult(results.getOrDefault(command.query(), List.of()), 1, false);
+			return result;
 		}
 	}
 }

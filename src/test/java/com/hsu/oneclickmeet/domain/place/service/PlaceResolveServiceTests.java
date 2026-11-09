@@ -1,10 +1,12 @@
 package com.hsu.oneclickmeet.domain.place.service;
 
 import com.hsu.oneclickmeet.domain.place.client.PlaceCandidate;
-import com.hsu.oneclickmeet.domain.place.client.PlaceNameExtractor;
+import com.hsu.oneclickmeet.domain.place.client.PlaceRecognizer;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchCommand;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchResult;
+import com.hsu.oneclickmeet.domain.place.client.Recognition;
+import com.hsu.oneclickmeet.domain.place.client.Recognition.RecognizedPlace;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse.Status;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
@@ -23,98 +25,103 @@ class PlaceResolveServiceTests {
 
 	private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
 
-	private final FakeExtractor extractor = new FakeExtractor();
+	private final FakeRecognizer recognizer = new FakeRecognizer();
 	private final FakeSearch search = new FakeSearch();
-	private final PlaceResolveService service = new PlaceResolveService(extractor, search);
+	private final PlaceResolveService service = new PlaceResolveService(recognizer, search);
 
 	private static PlaceCandidate candidate(String id, String name) {
 		return new PlaceCandidate(id, name, "주소", null, null, "CE7", 37.5, 127.0, null);
 	}
 
+	private static RecognizedPlace recognized(String id, String name) {
+		return new RecognizedPlace(candidate(id, name), "EXACT", List.of("이름 일치"),
+				List.of(new Recognition.Tag("음식이 맛있어요", 3)));
+	}
+
 	@Test
-	@DisplayName("AI가 뽑은 이름마다 카카오를 검색해 중복 없이 후보로 합친다")
-	void searchesEachNameAndMergesUniqueCandidates() {
-		extractor.names = List.of("연우재", "카머");
-		search.results.put("연우재", List.of(candidate("1", "연우재"), candidate("2", "연우재 2호점")));
-		search.results.put("카머", List.of(candidate("2", "연우재 2호점"), candidate("3", "카머")));
+	@DisplayName("AI 서버가 준 후보를 카카오 재검색 없이 매칭 정보와 함께 그대로 돌려준다")
+	void usesAiCandidatesWithoutSearching() {
+		recognizer.result = new Recognition("연우재", List.of(recognized("1", "연우재")));
 
 		PlaceResolveResponse response = service.resolveLink("공유 텍스트");
 
 		assertThat(response.status()).isEqualTo(Status.CANDIDATES_FOUND);
-		assertThat(response.candidates()).extracting(c -> c.providerPlaceId()).containsExactly("1", "2", "3");
-		assertThat(search.commands).extracting(PlaceSearchCommand::query).containsExactly("연우재", "카머");
-		assertThat(search.commands).allSatisfy(command -> {
-			assertThat(command.page()).isEqualTo(1);
-			assertThat(command.size()).isEqualTo(5);
-		});
+		assertThat(response.extractedQuery()).isEqualTo("연우재");
+		assertThat(response.candidates()).hasSize(1);
+		assertThat(response.candidates().get(0).matchType()).isEqualTo("EXACT");
+		assertThat(response.candidates().get(0).tags()).hasSize(1);
+		assertThat(search.commands).isEmpty();
 	}
 
 	@Test
-	@DisplayName("이름은 3개까지만 검색하고 후보는 10개까지만 돌려준다")
-	void limitsSearchesAndCandidates() {
-		extractor.names = List.of("a", "b", "c", "d");
-		for (String name : List.of("a", "b", "c")) {
+	@DisplayName("AI 서버를 쓸 수 없으면 규칙으로 이름을 찾아 카카오를 검색한다")
+	void fallsBackToHeuristicWhenAiFails() {
+		recognizer.failure = new PlaceUpstreamException(Reason.NETWORK, "down");
+		search.results.put("연우재", List.of(candidate("1", "연우재")));
+
+		PlaceResolveResponse response = service.resolveLink("[네이버지도]\n연우재\nhttps://naver.me/abc");
+
+		assertThat(response.status()).isEqualTo(Status.CANDIDATES_FOUND);
+		assertThat(response.candidates().get(0).matchType()).isNull();
+		assertThat(search.commands).extracting(PlaceSearchCommand::query).containsExactly("연우재");
+	}
+
+	@Test
+	@DisplayName("폴백 검색은 이름 3개까지, 후보는 10개까지이고 중복은 합친다")
+	void fallbackLimitsSearchesAndCandidates() {
+		recognizer.failure = new PlaceUpstreamException(Reason.SERVER_ERROR, "down");
+		for (String name : List.of("연우재", "카머", "오지다")) {
 			List<PlaceCandidate> found = new ArrayList<>();
 			for (int i = 0; i < 5; i++) {
 				found.add(candidate(name + i, name + i));
 			}
 			search.results.put(name, found);
 		}
+		search.results.put("카머", List.of(candidate("연우재0", "연우재0")));
+
+		PlaceResolveResponse response = service.resolveLink("1. 연우재\n2. 카머\n3. 오지다\n4. 다른곳");
+
+		assertThat(search.commands.size()).isLessThanOrEqualTo(3);
+		assertThat(response.candidates().size()).isLessThanOrEqualTo(10);
+		assertThat(response.candidates()).extracting(c -> c.providerPlaceId()).doesNotHaveDuplicates();
+	}
+
+	@Test
+	@DisplayName("후보가 없으면 NEEDS_SEARCH와 검색어를 200으로 돌려준다")
+	void needsSearchWhenNothingFound() {
+		recognizer.result = new Recognition("연남 카페", List.of());
 
 		PlaceResolveResponse response = service.resolveLink("x");
 
-		assertThat(search.commands).hasSize(3);
-		assertThat(response.candidates()).hasSize(10);
-	}
-
-	@Test
-	@DisplayName("AI 서버를 쓸 수 없으면 규칙으로 이름을 찾아 검색한다")
-	void fallsBackToHeuristicWhenAiFails() {
-		extractor.failure = new PlaceUpstreamException(Reason.NETWORK, "down");
-		search.results.put("연우재", List.of(candidate("1", "연우재")));
-
-		PlaceResolveResponse response = service.resolveLink("[네이버지도]\n연우재\nhttps://naver.me/abc");
-
-		assertThat(response.status()).isEqualTo(Status.CANDIDATES_FOUND);
-		assertThat(search.commands).extracting(PlaceSearchCommand::query).containsExactly("연우재");
-	}
-
-	@Test
-	@DisplayName("이름을 못 찾거나 검색 결과가 없으면 NEEDS_SEARCH다")
-	void needsSearchWhenNothingFound() {
-		extractor.names = List.of();
-		assertThat(service.resolveLink("x").status()).isEqualTo(Status.NEEDS_SEARCH);
+		assertThat(response.status()).isEqualTo(Status.NEEDS_SEARCH);
+		assertThat(response.extractedQuery()).isEqualTo("연남 카페");
 		assertThat(search.commands).isEmpty();
-
-		extractor.names = List.of("없는곳");
-		assertThat(service.resolveLink("x").status()).isEqualTo(Status.NEEDS_SEARCH);
 	}
 
 	@Test
-	@DisplayName("카카오 검색이 실패하면 그대로 실패한다")
-	void propagatesKakaoFailure() {
-		extractor.names = List.of("연우재");
+	@DisplayName("폴백 중 카카오 검색이 실패하면 그대로 실패한다")
+	void propagatesKakaoFailureOnFallback() {
+		recognizer.failure = new PlaceUpstreamException(Reason.NETWORK, "down");
 		search.failure = new PlaceUpstreamException(Reason.RATE_LIMIT, "limit");
 
-		assertThatThrownBy(() -> service.resolveLink("x")).isSameAs(search.failure);
+		assertThatThrownBy(() -> service.resolveLink("[네이버지도]\n연우재\nhttps://naver.me/abc")).isSameAs(search.failure);
 	}
 
 	@Test
-	@DisplayName("이미지에서 이름을 뽑아 후보를 찾는다")
+	@DisplayName("이미지에서 후보를 찾는다")
 	void resolvesImage() {
-		extractor.names = List.of("연우재");
-		search.results.put("연우재", List.of(candidate("1", "연우재")));
+		recognizer.result = new Recognition(null, List.of(recognized("1", "연우재")));
 
 		PlaceResolveResponse response = service.resolveImage(PNG, "image/png");
 
 		assertThat(response.status()).isEqualTo(Status.CANDIDATES_FOUND);
-		assertThat(extractor.imageCalls).isEqualTo(1);
+		assertThat(recognizer.imageCalls).isEqualTo(1);
 	}
 
 	@Test
 	@DisplayName("이미지 분석을 쓸 수 없으면 오류 대신 NEEDS_SEARCH다")
 	void imageNeedsSearchWhenAiFails() {
-		extractor.failure = new PlaceUpstreamException(Reason.AUTH, "not configured");
+		recognizer.failure = new PlaceUpstreamException(Reason.AUTH, "not configured");
 
 		PlaceResolveResponse response = service.resolveImage(PNG, "image/png");
 
@@ -138,30 +145,27 @@ class PlaceResolveServiceTests {
 			assertThatThrownBy(() -> service.resolveImage((byte[]) invalid[0], (String) invalid[1]))
 				.isInstanceOf(BusinessException.class);
 		}
-		assertThat(extractor.imageCalls).isZero();
+		assertThat(recognizer.imageCalls).isZero();
 	}
 
-	private static class FakeExtractor implements PlaceNameExtractor {
+	private static class FakeRecognizer implements PlaceRecognizer {
 
-		private List<String> names = List.of();
+		private Recognition result = new Recognition(null, List.of());
 		private RuntimeException failure;
 		private int imageCalls;
 
 		@Override
-		public List<String> fromText(String sharedText) {
+		public Recognition recognizeText(String sharedText) {
 			if (failure != null) {
 				throw failure;
 			}
-			return names;
+			return result;
 		}
 
 		@Override
-		public List<String> fromImage(byte[] image, String contentType) {
+		public Recognition recognizeImage(byte[] image, String contentType) {
 			imageCalls++;
-			if (failure != null) {
-				throw failure;
-			}
-			return names;
+			return recognizeText("");
 		}
 	}
 

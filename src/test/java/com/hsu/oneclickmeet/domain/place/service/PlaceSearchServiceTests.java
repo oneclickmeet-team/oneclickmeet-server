@@ -8,6 +8,8 @@ import com.hsu.oneclickmeet.domain.place.dto.request.PlaceSearchRequest;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceSearchResponse;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException.Reason;
+import com.hsu.oneclickmeet.global.exception.BusinessException;
+import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,15 +28,16 @@ class PlaceSearchServiceTests {
 	private final PlaceSearchService service = new PlaceSearchService(client);
 
 	private static PlaceSearchRequest request(String query, int page, int size) {
-		return new PlaceSearchRequest(query, page, size);
+		String cursor = page == 1 ? null : PlaceSearchCursor.encode(query, size, page);
+		return new PlaceSearchRequest(query, cursor, size);
 	}
 
 	@Test
-	@DisplayName("검색어 앞뒤 공백을 제거하고 page·size를 클라이언트에 전달하며 위치는 보내지 않는다")
+	@DisplayName("검색어 앞뒤 공백을 제거하고 커서의 쪽 번호·size를 클라이언트에 전달하며 위치는 보내지 않는다")
 	void trimsQueryAndPassesParametersToClient() {
 		client.result = new PlaceSearchResult(List.of(CANDIDATE), 2, true);
 
-		service.search(new PlaceSearchRequest("  한성대입구역 카페  ", 2, 5));
+		service.search(new PlaceSearchRequest("  한성대입구역 카페  ", PlaceSearchCursor.encode("한성대입구역 카페", 5, 2), 5));
 
 		assertThat(client.commands).singleElement().satisfies(command -> {
 			assertThat(command.query()).isEqualTo("한성대입구역 카페");
@@ -52,8 +55,7 @@ class PlaceSearchServiceTests {
 
 		PlaceSearchResponse response = service.search(request("카페", 1, 10));
 
-		assertThat(response.page()).isEqualTo(1);
-		assertThat(response.candidates()).singleElement().satisfies(candidate -> {
+		assertThat(response.items()).singleElement().satisfies(candidate -> {
 			assertThat(candidate.providerPlaceId()).isEqualTo("123");
 			assertThat(candidate.name()).isEqualTo("예시 카페");
 			assertThat(candidate.roadAddress()).isNull();
@@ -63,7 +65,7 @@ class PlaceSearchServiceTests {
 	}
 
 	@Test
-	@DisplayName("page 생략 시 기본값(1쪽, 10건)을 사용한다")
+	@DisplayName("cursor·size 생략 시 기본값(1쪽, 10건)을 사용한다")
 	void usesDefaultPageAndSize() {
 		client.result = new PlaceSearchResult(List.of(), 1, false);
 
@@ -82,7 +84,7 @@ class PlaceSearchServiceTests {
 
 		PlaceSearchResponse response = service.search(request("없는장소", 1, 10));
 
-		assertThat(response.candidates()).isEmpty();
+		assertThat(response.items()).isEmpty();
 		assertThat(response.hasNext()).isFalse();
 	}
 
@@ -116,7 +118,7 @@ class PlaceSearchServiceTests {
 		PlaceSearchResponse response = service.search(request("카페", 5, 10));
 
 		assertThat(client.commands).hasSize(1);
-		assertThat(response.candidates()).hasSize(1);
+		assertThat(response.items()).hasSize(1);
 	}
 
 	@Test
@@ -126,8 +128,8 @@ class PlaceSearchServiceTests {
 		PlaceSearchResponse fifteenPerPage = service.search(request("카페", 4, 15));
 
 		assertThat(client.commands).isEmpty();
-		assertThat(tenPerPage).isEqualTo(PlaceSearchResponse.empty(6));
-		assertThat(fifteenPerPage).isEqualTo(PlaceSearchResponse.empty(4));
+		assertThat(tenPerPage).isEqualTo(PlaceSearchResponse.empty());
+		assertThat(fifteenPerPage).isEqualTo(PlaceSearchResponse.empty());
 	}
 
 	@Test
@@ -135,7 +137,7 @@ class PlaceSearchServiceTests {
 	void handlesHugePageWithoutOverflow() {
 		PlaceSearchResponse response = service.search(request("카페", Integer.MAX_VALUE, 15));
 
-		assertThat(response.candidates()).isEmpty();
+		assertThat(response.items()).isEmpty();
 		assertThat(response.hasNext()).isFalse();
 		assertThat(client.commands).isEmpty();
 	}
@@ -148,6 +150,64 @@ class PlaceSearchServiceTests {
 		assertThatThrownBy(() -> service.search(request("카페", 1, 10)))
 			.isInstanceOf(PlaceUpstreamException.class)
 			.satisfies(thrown -> assertThat(((PlaceUpstreamException) thrown).getReason()).isEqualTo(Reason.RATE_LIMIT));
+	}
+
+	@Test
+	@DisplayName("다음 쪽이 있으면 nextCursor를 주고, 그 커서로 다음 쪽(2쪽)을 요청한다")
+	void nextCursorLeadsToNextPage() {
+		client.result = new PlaceSearchResult(List.of(CANDIDATE), 1, true);
+
+		PlaceSearchResponse first = service.search(new PlaceSearchRequest("카페", null, 10));
+		service.search(new PlaceSearchRequest("카페", first.nextCursor(), 10));
+
+		assertThat(first.hasNext()).isTrue();
+		assertThat(first.nextCursor()).isNotBlank();
+		assertThat(client.commands).extracting(PlaceSearchCommand::page).containsExactly(1, 2);
+	}
+
+	@Test
+	@DisplayName("다음 쪽이 없으면 nextCursor는 null이다")
+	void nextCursorIsNullWithoutNextPage() {
+		client.result = new PlaceSearchResult(List.of(CANDIDATE), 1, false);
+
+		PlaceSearchResponse response = service.search(request("카페", 1, 10));
+
+		assertThat(response.hasNext()).isFalse();
+		assertThat(response.nextCursor()).isNull();
+	}
+
+	@Test
+	@DisplayName("검색어 앞뒤 공백이 달라도 같은 검색으로 보고 커서를 받아들인다")
+	void cursorIgnoresSurroundingWhitespaceOfQuery() {
+		client.result = new PlaceSearchResult(List.of(CANDIDATE), 1, true);
+
+		PlaceSearchResponse first = service.search(new PlaceSearchRequest(" 카페 ", null, 10));
+		service.search(new PlaceSearchRequest("카페", first.nextCursor(), 10));
+
+		assertThat(client.commands).extracting(PlaceSearchCommand::page).containsExactly(1, 2);
+	}
+
+	@Test
+	@DisplayName("다른 검색어나 다른 size에서 만든 커서, 깨진 커서는 400으로 거절한다")
+	void rejectsForeignOrMalformedCursor() {
+		String cursor = PlaceSearchCursor.encode("카페", 10, 2);
+		String firstPage = PlaceSearchCursor.encode("카페", 10, 1);
+		String notNumber = java.util.Base64.getUrlEncoder().withoutPadding()
+			.encodeToString("ps1|x|10|abc".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+		for (PlaceSearchRequest request : List.of(
+				new PlaceSearchRequest("식당", cursor, 10),
+				new PlaceSearchRequest("카페", cursor, 5),
+				new PlaceSearchRequest("카페", firstPage, 10),
+				new PlaceSearchRequest("카페", notNumber, 10),
+				new PlaceSearchRequest("카페", "!!!", 10),
+				new PlaceSearchRequest("카페", "a".repeat(201), 10))) {
+			assertThatThrownBy(() -> service.search(request))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(thrown -> assertThat(((BusinessException) thrown).getErrorCode())
+					.isEqualTo(CommonErrorCode.BAD_REQUEST));
+		}
+		assertThat(client.commands).isEmpty();
 	}
 
 	private static class FakeClient implements PlaceSearchClient {
