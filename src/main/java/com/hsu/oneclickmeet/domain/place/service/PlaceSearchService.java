@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * 장소 검색(후보 조회). DB를 읽거나 쓰지 않는다.
- * 카카오는 결과 상한을 넘는 page를 요청하면 오류나 빈 목록이 아니라 마지막 쪽을 다시 돌려주므로,
+ * 커서는 카카오 page 번호를 감싼 값이다. 카카오는 결과 상한을 넘는 page를 요청하면 오류나 빈 목록이 아니라 마지막 쪽을 다시 돌려주므로,
  * 상한을 넘는 요청은 카카오를 호출하지 않고 빈 결과로 응답한다.
  */
 @Service
@@ -24,17 +24,17 @@ public class PlaceSearchService {
 	private final PlaceSearchClient placeSearchClient;
 
 	public PlaceSearchResponse search(PlaceSearchRequest request) {
-		int page = request.page();
+		String query = request.query().trim();
 		int size = request.size();
+		int page = PlaceSearchCursor.decode(request.cursor(), query, size);
 		if (isBeyondLimit(page, size)) {
-			return PlaceSearchResponse.empty(page);
+			return PlaceSearchResponse.empty();
 		}
-		PlaceSearchResult result = placeSearchClient.search(
-				new PlaceSearchCommand(request.query().trim(), page, size, null, null));
+		PlaceSearchResult result = placeSearchClient.search(new PlaceSearchCommand(query, page, size, null, null));
 		boolean hasNext = result.hasNext() && (long) page * size < MAX_RESULTS;
 		return new PlaceSearchResponse(
 				result.candidates().stream().map(PlaceCandidateResponse::from).toList(),
-				page,
+				hasNext ? PlaceSearchCursor.encode(query, size, page + 1) : null,
 				hasNext);
 	}
 
