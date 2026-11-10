@@ -16,7 +16,7 @@
 |---|---|---|
 | `members` (#68) | `id`(IDENTITY), `name`(닉네임, NOT NULL), `email`(NULL), `provider`(`KAKAO`/`GOOGLE`), `provider_user_id`, `created_at`, `updated_at`. 유니크 (`provider`, `provider_user_id`) | 컬럼 이름이 `auth_provider`가 아니라 `provider`. `password_hash` 없음(이메일 가입 제외). `course`·`couple`·`comment` 코드가 `members(id, name)`을 직접 조회하므로 `name`을 유지했고, 다른 도메인의 통합 테스트가 `id, name`만 넣기 때문에 `provider`·`provider_user_id`는 DB에서 NULL 허용(가입 코드는 항상 채움). 테스트가 정리되면 NOT NULL로 바꾼다 |
 | `refresh_tokens` (#68) | `member_id`, `token_hash`(SHA-256, 유니크), `expires_at`, `revoked_at` | 제안에 없던 테이블. 갱신 토큰 원문은 저장하지 않는다 |
-| `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `source_url`·`hours`는 미구현 |
+| `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `tags`(JSON, nullable, 블로그 태그 최대 5개, #89) 추가, `source_url`·`hours`는 미구현 |
 | `activities`, `notifications` (#62) | 회원별 활동 기록과 알림(읽음 시각) | 제안 범위 밖이던 영역 |
 
 - **코스와 보관함(§2.3):** 재원의 `course`는 `CoursePlace`에 `original_place_id`(보관함 장소 번호)와 저장 시점의 `place_name`을 두고, 장소 이름은 `CoursePlaceLookup`으로 조회한다. 이 인터페이스를 장소 도메인이 구현했다(`SavedPlaceCourseLookup`, 본인의 보관함 장소일 때만 이름 반환, #60). 좌표 등 스냅샷 컬럼 추가는 하지 않은 상태다. **시연 전에 코스 저장을 장소 스냅샷 방식으로 바꾼다**(재원, 2026-11-09): 보관함에 없는 외부 추천 장소도 코스에 담을 수 있어야 하고, 코스를 저장해도 보관함은 그대로다. 요청 필드와 기존 코스 호환은 재원이 정리해 앱 팀에 공유한다.

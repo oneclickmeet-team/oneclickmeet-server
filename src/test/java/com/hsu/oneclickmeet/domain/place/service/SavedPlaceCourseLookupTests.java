@@ -40,7 +40,7 @@ class SavedPlaceCourseLookupTests {
 	@Test
 	@DisplayName("본인의 보관함 장소면 이름을 돌려준다")
 	void returnsNameForOwnPlace() {
-		long id = service.save(MEMBER, new SaveSavedPlaceRequest("100", "예시 카페", "주소", null, null, null, 37.5, 127.0, null))
+		long id = service.save(MEMBER, new SaveSavedPlaceRequest("100", "예시 카페", "주소", null, null, null, 37.5, 127.0, null, null))
 				.place().savedPlaceId();
 
 		assertThat(lookup.findPlaceName(MEMBER, id)).contains("예시 카페");
@@ -49,7 +49,7 @@ class SavedPlaceCourseLookupTests {
 	@Test
 	@DisplayName("다른 회원의 장소나 없는 장소는 비어 있다")
 	void returnsEmptyForOtherMembersOrMissingPlace() {
-		long id = service.save(MEMBER, new SaveSavedPlaceRequest("100", "예시 카페", "주소", null, null, null, 37.5, 127.0, null))
+		long id = service.save(MEMBER, new SaveSavedPlaceRequest("100", "예시 카페", "주소", null, null, null, 37.5, 127.0, null, null))
 				.place().savedPlaceId();
 
 		assertThat(lookup.findPlaceName(OTHER, id)).isEmpty();

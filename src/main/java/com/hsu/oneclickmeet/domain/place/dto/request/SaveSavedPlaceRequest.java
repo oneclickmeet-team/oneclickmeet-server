@@ -2,14 +2,19 @@ package com.hsu.oneclickmeet.domain.place.dto.request;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
+
+import java.util.List;
 
 /**
  * 보관함 저장 요청. 앱이 검색 결과에서 고른 후보의 값을 그대로 보낸다.
  * 회원은 인증 정보에서 얻으므로 요청에 포함하지 않는다.
+ * tags는 링크·이미지 인식 결과의 태그를 그대로 보내며, 없거나 비어 있어도 저장된다.
  */
 public record SaveSavedPlaceRequest(
 		@NotBlank(message = "providerPlaceId는 필수입니다.")
@@ -37,5 +42,16 @@ public record SaveSavedPlaceRequest(
 		@DecimalMax(value = "180.0", message = "lng는 180 이하여야 합니다.")
 		Double lng,
 		@Size(max = 500, message = "placeUrl은 500자 이하여야 합니다.")
-		String placeUrl) {
+		String placeUrl,
+		@Size(max = 5, message = "tags는 5개 이하여야 합니다.")
+		List<@Valid TagRequest> tags) {
+
+	/** 인식 결과에서 받은 태그를 그대로 보낸다. 없으면 보내지 않아도 된다. */
+	public record TagRequest(
+			@NotBlank(message = "tag label은 필수입니다.")
+			@Size(max = 50, message = "tag label은 50자 이하여야 합니다.")
+			String label,
+			@Min(value = 0, message = "tag mentionCount는 0 이상이어야 합니다.")
+			int mentionCount) {
+	}
 }

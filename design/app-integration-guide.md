@@ -98,7 +98,7 @@
 
 | API | 상태 | 요청 | 응답 |
 |---|---|---|---|
-| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수) | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt }` |
+| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수), 선택 `tags`(`[{label, mentionCount}]`, 최대 5개). 링크·이미지 인식 결과의 `tags`를 그대로 보내며, 없거나 비어 있어도 저장된다 | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt, tags }`(`tags`는 없으면 `[]`). 목록·상세 조회 응답에도 `tags`가 같이 내려간다. 이미 저장한 장소를 다시 저장해도 처음 저장한 값(태그 포함)은 바뀌지 않는다 |
 | `GET /saved-places` | 구현 | `cursor`, `size`, `categoryGroupCode`(선택, 예 `CE7`) | `{ items: [...], nextCursor, hasNext }`, 최신 저장순 |
 | `GET /saved-places/{id}` | 구현 | — | 위 항목 1건 |
 | `DELETE /saved-places/{id}` | 구현 | — | 204 |

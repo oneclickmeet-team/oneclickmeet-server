@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
@@ -31,6 +33,32 @@ class SavedPlaceTests {
 		assertThat(place.getCategoryGroupCode()).isNull();
 		assertThat(place.getPlaceUrl()).isNull();
 		assertThat(place.getId()).isNull();
+	}
+
+	@Test
+	@DisplayName("태그는 다듬어서 보관하고, 없거나 비어 있으면 빈 목록이다")
+	void keepsTrimmedTagsOrEmptyList() {
+		SavedPlace tagged = SavedPlace.create(7L, PlaceProvider.KAKAO, "1", "카페", "주소", null, null, null, 37.5, 127.0,
+				null, List.of(new SavedPlaceTag(" 아늑해요 ", 12)));
+
+		assertThat(tagged.getTags()).containsExactly(new SavedPlaceTag("아늑해요", 12));
+		assertThat(valid().getTags()).isEmpty();
+		assertThat(SavedPlace.create(7L, PlaceProvider.KAKAO, "1", "카페", "주소", null, null, null, 37.5, 127.0, null,
+				List.of()).getTags()).isEmpty();
+	}
+
+	@Test
+	@DisplayName("태그가 6개 이상이거나 label이 비었거나 mentionCount가 음수면 생성할 수 없다")
+	void rejectsInvalidTags() {
+		SavedPlaceTag tag = new SavedPlaceTag("아늑해요", 1);
+		for (List<SavedPlaceTag> invalid : List.of(
+				List.of(tag, tag, tag, tag, tag, tag),
+				List.of(new SavedPlaceTag(" ", 1)),
+				List.of(new SavedPlaceTag("a".repeat(51), 1)),
+				List.of(new SavedPlaceTag("아늑해요", -1)))) {
+			assertThatIllegalArgumentException().isThrownBy(() -> SavedPlace.create(7L, PlaceProvider.KAKAO, "1", "카페",
+					"주소", null, null, null, 37.5, 127.0, null, invalid));
+		}
 	}
 
 	@Test
