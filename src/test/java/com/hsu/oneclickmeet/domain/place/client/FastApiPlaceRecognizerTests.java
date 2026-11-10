@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -144,9 +145,26 @@ class FastApiPlaceRecognizerTests {
 			.andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"image\"")))
 			.andRespond(withSuccess(FOUND, MediaType.APPLICATION_JSON));
 
-		Recognition result = recognizer("https://ai.test").recognizeImage(new byte[] {1, 2, 3}, "image/png");
+		Recognition result = recognizer("https://ai.test").recognizeImage(new RecognitionImage(new byte[] {1, 2, 3}, "image/png"), List.of());
 
 		assertThat(result.places()).hasSize(1);
+	}
+
+	@Test
+	@DisplayName("추가 캡처는 extraImages 필드로 같이 보낸다")
+	void sendsExtraImagesAsRepeatedParts() {
+		server.expect(requestTo(IMAGE_URL))
+			.andExpect(method(HttpMethod.POST))
+			.andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"image\"")))
+			.andExpect(content().string(org.hamcrest.Matchers.stringContainsInOrder(
+				"name=\"extraImages\"", "name=\"extraImages\"")))
+			.andRespond(withSuccess(FOUND, MediaType.APPLICATION_JSON));
+		RecognitionImage shot = new RecognitionImage(new byte[] {1, 2, 3}, "image/png");
+
+		Recognition result = recognizer("https://ai.test").recognizeImage(shot, List.of(shot, shot));
+
+		assertThat(result.places()).hasSize(1);
+		server.verify();
 	}
 
 	@Test

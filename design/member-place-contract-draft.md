@@ -38,7 +38,7 @@
 | `GET` · `PATCH /members/me` | 구현(#68). 수정은 닉네임만 |
 | `DELETE /members/me` | 개발하지 않음(시연에 쓰이지 않아 제외, 2026-11-08, §5-6) |
 | `GET /places/search` | 구현(#22, #58). 커서 방식으로 변경(#85): `cursor`·`size`, 응답 `items`·`nextCursor`·`hasNext` |
-| `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82). 실제 AI 서버 호출 검증은 아직 |
+| `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82), 추가 캡처 `extraImages` 최대 4장(#87). 실제 AI 서버 호출 검증은 아직 |
 | `POST` · `GET` · `GET /{id}` · `DELETE /saved-places` | 구현(#60). 같은 장소 다시 저장은 409가 아니라 **기존 항목과 200**(새로 저장은 201). 목록은 커서 방식(`items`, `nextCursor`, `hasNext`) |
 | `GET /saved-places/{id}/nearby` | 구현(#72) |
 | `POST /saved-places/{id}/share` | 미구현(공유 영역과 합의 후) |

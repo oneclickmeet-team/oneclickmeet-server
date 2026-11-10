@@ -5,6 +5,7 @@ import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
 import com.hsu.oneclickmeet.domain.place.client.PlaceRecognizer;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchCommand;
 import com.hsu.oneclickmeet.domain.place.client.Recognition;
+import com.hsu.oneclickmeet.domain.place.client.RecognitionImage;
 import com.hsu.oneclickmeet.domain.place.dto.response.ResolvedPlaceResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
@@ -30,6 +31,7 @@ import java.util.Set;
 public class PlaceResolveService {
 
 	static final long MAX_IMAGE_BYTES = 5L * 1024 * 1024;
+	static final int MAX_EXTRA_IMAGES = 4;
 	static final int NAMES_TO_SEARCH = 3;
 	static final int CANDIDATES_PER_NAME = 5;
 	static final int MAX_CANDIDATES = 10;
@@ -52,10 +54,14 @@ public class PlaceResolveService {
 		}
 	}
 
-	public PlaceResolveResponse resolveImage(byte[] image, String contentType) {
-		validateImage(image, contentType);
+	public PlaceResolveResponse resolveImage(RecognitionImage image, List<RecognitionImage> extraImages) {
+		validateImage(image);
+		if (extraImages.size() > MAX_EXTRA_IMAGES) {
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST);
+		}
+		extraImages.forEach(this::validateImage);
 		try {
-			return toResponse(recognizer.recognizeImage(image, contentType));
+			return toResponse(recognizer.recognizeImage(image, extraImages));
 		} catch (PlaceUpstreamException exception) {
 			log.warn("AI 서버를 쓸 수 없어 직접 검색으로 안내합니다. reason={}", exception.getReason());
 			return PlaceResolveResponse.needsSearch(null);
@@ -85,7 +91,9 @@ public class PlaceResolveService {
 		return result;
 	}
 
-	private void validateImage(byte[] image, String contentType) {
+	private void validateImage(RecognitionImage file) {
+		byte[] image = file == null ? null : file.bytes();
+		String contentType = file == null ? null : file.contentType();
 		if (image == null || image.length == 0 || image.length > MAX_IMAGE_BYTES
 				|| contentType == null || !IMAGE_TYPES.contains(contentType.toLowerCase())
 				|| !matchesSignature(image, contentType.toLowerCase())) {
