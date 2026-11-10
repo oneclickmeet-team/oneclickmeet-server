@@ -1,5 +1,6 @@
 package com.hsu.oneclickmeet.domain.place.controller;
 
+import com.hsu.oneclickmeet.domain.place.client.RecognitionImage;
 import com.hsu.oneclickmeet.domain.place.dto.request.ResolveLinkRequest;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse;
 import com.hsu.oneclickmeet.domain.place.service.PlaceResolveService;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 @RequestMapping(value = "/api/v1/places/resolve", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -31,11 +34,21 @@ public class PlaceResolveController {
 	}
 
 	@PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public ApiResponse<PlaceResolveResponse> resolveImage(@RequestParam("image") MultipartFile image) {
+	public ApiResponse<PlaceResolveResponse> resolveImage(@RequestParam("image") MultipartFile image,
+			@RequestParam(name = "extraImages", required = false) List<MultipartFile> extraImages) {
+		List<MultipartFile> extras = extraImages == null ? List.of() : extraImages;
 		try {
-			return ApiResponse.success(placeResolveService.resolveImage(image.getBytes(), image.getContentType()));
+			List<RecognitionImage> extraFiles = new ArrayList<>();
+			for (MultipartFile extra : extras) {
+				extraFiles.add(toRecognitionImage(extra));
+			}
+			return ApiResponse.success(placeResolveService.resolveImage(toRecognitionImage(image), extraFiles));
 		} catch (IOException exception) {
 			throw new BusinessException(CommonErrorCode.BAD_REQUEST);
 		}
+	}
+
+	private RecognitionImage toRecognitionImage(MultipartFile file) throws IOException {
+		return new RecognitionImage(file.getBytes(), file.getContentType());
 	}
 }

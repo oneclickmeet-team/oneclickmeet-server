@@ -6,6 +6,7 @@ import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchCommand;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchResult;
 import com.hsu.oneclickmeet.domain.place.client.Recognition;
+import com.hsu.oneclickmeet.domain.place.client.RecognitionImage;
 import com.hsu.oneclickmeet.domain.place.client.Recognition.RecognizedPlace;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.PlaceResolveResponse.Status;
@@ -112,10 +113,34 @@ class PlaceResolveServiceTests {
 	void resolvesImage() {
 		recognizer.result = new Recognition(null, List.of(recognized("1", "연우재")));
 
-		PlaceResolveResponse response = service.resolveImage(PNG, "image/png");
+		PlaceResolveResponse response = service.resolveImage(new RecognitionImage(PNG, "image/png"), List.of());
 
 		assertThat(response.status()).isEqualTo(Status.CANDIDATES_FOUND);
 		assertThat(recognizer.imageCalls).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("추가 캡처를 원본과 함께 AI 서버로 전달한다")
+	void passesExtraImagesToRecognizer() {
+		recognizer.result = new Recognition(null, List.of(recognized("1", "연우재")));
+		RecognitionImage extra = new RecognitionImage(PNG, "image/png");
+
+		service.resolveImage(new RecognitionImage(PNG, "image/png"), List.of(extra, extra, extra, extra));
+
+		assertThat(recognizer.lastExtraImages).hasSize(PlaceResolveService.MAX_EXTRA_IMAGES);
+	}
+
+	@Test
+	@DisplayName("추가 캡처가 5장이거나 하나라도 올바르지 않으면 AI 서버를 호출하지 않고 400이다")
+	void rejectsInvalidExtraImages() {
+		RecognitionImage image = new RecognitionImage(PNG, "image/png");
+		RecognitionImage bad = new RecognitionImage(PNG, "image/jpeg");
+
+		assertThatThrownBy(() -> service.resolveImage(image, List.of(image, image, image, image, image)))
+			.isInstanceOf(BusinessException.class);
+		assertThatThrownBy(() -> service.resolveImage(image, List.of(image, bad)))
+			.isInstanceOf(BusinessException.class);
+		assertThat(recognizer.imageCalls).isZero();
 	}
 
 	@Test
@@ -123,7 +148,7 @@ class PlaceResolveServiceTests {
 	void imageNeedsSearchWhenAiFails() {
 		recognizer.failure = new PlaceUpstreamException(Reason.AUTH, "not configured");
 
-		PlaceResolveResponse response = service.resolveImage(PNG, "image/png");
+		PlaceResolveResponse response = service.resolveImage(new RecognitionImage(PNG, "image/png"), List.of());
 
 		assertThat(response.status()).isEqualTo(Status.NEEDS_SEARCH);
 		assertThat(search.commands).isEmpty();
@@ -142,7 +167,7 @@ class PlaceResolveServiceTests {
 				new Object[] {PNG, "image/jpeg"},
 				new Object[] {new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}, "image/png"},
 				new Object[] {tooLarge, "image/png"})) {
-			assertThatThrownBy(() -> service.resolveImage((byte[]) invalid[0], (String) invalid[1]))
+			assertThatThrownBy(() -> service.resolveImage(new RecognitionImage((byte[]) invalid[0], (String) invalid[1]), List.of()))
 				.isInstanceOf(BusinessException.class);
 		}
 		assertThat(recognizer.imageCalls).isZero();
@@ -153,6 +178,7 @@ class PlaceResolveServiceTests {
 		private Recognition result = new Recognition(null, List.of());
 		private RuntimeException failure;
 		private int imageCalls;
+		private List<RecognitionImage> lastExtraImages;
 
 		@Override
 		public Recognition recognizeText(String sharedText) {
@@ -163,8 +189,9 @@ class PlaceResolveServiceTests {
 		}
 
 		@Override
-		public Recognition recognizeImage(byte[] image, String contentType) {
+		public Recognition recognizeImage(RecognitionImage image, List<RecognitionImage> extraImages) {
 			imageCalls++;
+			lastExtraImages = extraImages;
 			return recognizeText("");
 		}
 	}

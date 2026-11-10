@@ -5,6 +5,7 @@ import com.hsu.oneclickmeet.domain.place.client.PlaceRecognizer;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchClient;
 import com.hsu.oneclickmeet.domain.place.client.PlaceSearchResult;
 import com.hsu.oneclickmeet.domain.place.client.Recognition;
+import com.hsu.oneclickmeet.domain.place.client.RecognitionImage;
 import com.hsu.oneclickmeet.domain.place.client.Recognition.RecognizedPlace;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceUpstreamException.Reason;
@@ -21,6 +22,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,6 +35,7 @@ class PlaceResolveControllerTests {
 	private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
 
 	private boolean found = true;
+	private int extraImageCount = -1;
 	private RuntimeException extractorFailure;
 	private RuntimeException searchFailure;
 	private LocalValidatorFactoryBean validator;
@@ -56,7 +59,8 @@ class PlaceResolveControllerTests {
 			}
 
 			@Override
-			public Recognition recognizeImage(byte[] image, String contentType) {
+			public Recognition recognizeImage(RecognitionImage image, List<RecognitionImage> extraImages) {
+				extraImageCount = extraImages.size();
 				return recognizeText("");
 			}
 		};
@@ -126,6 +130,50 @@ class PlaceResolveControllerTests {
 				.file(new MockMultipartFile("image", "shot.png", "image/png", PNG)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("CANDIDATES_FOUND"));
+	}
+
+	@Test
+	@DisplayName("추가 캡처를 함께 보내면 원본과 함께 AI 서버로 전달한다")
+	void resolvesImageWithExtraImages() throws Exception {
+		mvc.perform(multipart("/api/v1/places/resolve/image")
+				.file(new MockMultipartFile("image", "a.png", "image/png", PNG))
+				.file(new MockMultipartFile("extraImages", "b.png", "image/png", PNG))
+				.file(new MockMultipartFile("extraImages", "c.png", "image/png", PNG)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("CANDIDATES_FOUND"));
+
+		assertThat(extraImageCount).isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("추가 캡처 없이 보내면 빈 목록으로 전달한다")
+	void resolvesImageWithoutExtraImages() throws Exception {
+		mvc.perform(multipart("/api/v1/places/resolve/image")
+				.file(new MockMultipartFile("image", "a.png", "image/png", PNG)))
+			.andExpect(status().isOk());
+
+		assertThat(extraImageCount).isZero();
+	}
+
+	@Test
+	@DisplayName("추가 캡처가 4장을 넘거나 형식이 맞지 않으면 400이고 AI 서버를 호출하지 않는다")
+	void rejectsTooManyOrInvalidExtraImages() throws Exception {
+		var tooMany = multipart("/api/v1/places/resolve/image")
+				.file(new MockMultipartFile("image", "a.png", "image/png", PNG));
+		for (int i = 0; i < 5; i++) {
+			tooMany.file(new MockMultipartFile("extraImages", "e" + i + ".png", "image/png", PNG));
+		}
+		mvc.perform(tooMany)
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+
+		mvc.perform(multipart("/api/v1/places/resolve/image")
+				.file(new MockMultipartFile("image", "a.png", "image/png", PNG))
+				.file(new MockMultipartFile("extraImages", "b.txt", "text/plain", "hello".getBytes())))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+
+		assertThat(extraImageCount).isEqualTo(-1);
 	}
 
 	@Test

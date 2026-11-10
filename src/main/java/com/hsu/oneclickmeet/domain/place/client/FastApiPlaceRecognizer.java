@@ -29,7 +29,7 @@ import java.util.function.Supplier;
  * AI 서버(FastAPI) 호출 클라이언트. 계약은 AI 파트의 API_CONVENTION(v2.1)을 따른다.
  * <pre>
  * POST /internal/v1/place-recognitions        {"sharedText": "..."}      -> RecognitionResponse
- * POST /internal/v1/place-image-recognitions  multipart "image" 파일      -> RecognitionResponse
+ * POST /internal/v1/place-image-recognitions  multipart "image" 파일 + "extraImages" 파일(0~4장) -> RecognitionResponse
  * </pre>
  * 인식은 외부 LLM 호출이 들어가 비용·시간이 크므로 재시도하지 않는다.
  * 사용자가 보낸 텍스트·이미지와 인식 결과는 로그에 남기지 않는다.
@@ -67,17 +67,13 @@ public class FastApiPlaceRecognizer implements PlaceRecognizer {
 	}
 
 	@Override
-	public Recognition recognizeImage(byte[] image, String contentType) {
+	public Recognition recognizeImage(RecognitionImage image, List<RecognitionImage> extraImages) {
 		return call(() -> {
-			HttpHeaders partHeaders = new HttpHeaders();
-			partHeaders.setContentType(MediaType.parseMediaType(contentType));
 			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-			body.add("image", new HttpEntity<>(new ByteArrayResource(image) {
-				@Override
-				public String getFilename() {
-					return "image";
-				}
-			}, partHeaders));
+			body.add("image", part(image));
+			for (RecognitionImage extra : extraImages) {
+				body.add("extraImages", part(extra));
+			}
 			return imageRestClient.post()
 					.uri("/internal/v1/place-image-recognitions")
 					.contentType(MediaType.MULTIPART_FORM_DATA)
@@ -85,6 +81,17 @@ public class FastApiPlaceRecognizer implements PlaceRecognizer {
 					.retrieve()
 					.body(RecognitionPayload.class);
 		});
+	}
+
+	private HttpEntity<ByteArrayResource> part(RecognitionImage image) {
+		HttpHeaders partHeaders = new HttpHeaders();
+		partHeaders.setContentType(MediaType.parseMediaType(image.contentType()));
+		return new HttpEntity<>(new ByteArrayResource(image.bytes()) {
+			@Override
+			public String getFilename() {
+				return "image";
+			}
+		}, partHeaders);
 	}
 
 	private Recognition call(Supplier<RecognitionPayload> request) {
