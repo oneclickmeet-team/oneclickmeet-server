@@ -2,6 +2,7 @@ package com.hsu.oneclickmeet.domain.place.controller;
 
 import com.hsu.oneclickmeet.domain.place.dto.request.SaveSavedPlaceRequest;
 import com.hsu.oneclickmeet.domain.place.dto.response.SavedPlaceListResponse;
+import com.hsu.oneclickmeet.domain.place.dto.response.ResolvedPlaceResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.SavedPlaceResponse;
 import com.hsu.oneclickmeet.domain.place.exception.PlaceErrorCode;
 import com.hsu.oneclickmeet.domain.place.service.SavedPlaceService;
@@ -59,7 +60,7 @@ class SavedPlaceControllerTests {
 
 	private static SavedPlaceResponse response(long id) {
 		return new SavedPlaceResponse(id, "123", "예시 카페", "서울 성북구 삼선동 1", "서울 성북구 한성로 12",
-				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123", SAVED_AT);
+				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123", SAVED_AT, List.of());
 	}
 
 	private static RequestPostProcessor member() {
@@ -81,7 +82,40 @@ class SavedPlaceControllerTests {
 			.andExpect(jsonPath("$.data.memberId").doesNotHaveJsonPath())
 			.andExpect(jsonPath("$.error").value(nullValue()));
 		verify(service).save(MEMBER_ID, new SaveSavedPlaceRequest("123", "예시 카페", "서울 성북구 삼선동 1", "서울 성북구 한성로 12",
-				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123"));
+				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123", null));
+	}
+
+	@Test
+	@DisplayName("tags를 함께 보내면 서비스에 그대로 전달하고 응답의 tags를 돌려준다")
+	void passesTagsAndReturnsThem() throws Exception {
+		SavedPlaceResponse withTags = new SavedPlaceResponse(11, "123", "예시 카페", "서울 성북구 삼선동 1", null, null, null,
+				37.5822, 127.0105, null, SAVED_AT, List.of(new ResolvedPlaceResponse.TagResponse("아늑해요", 12)));
+		when(service.save(eq(MEMBER_ID), any(SaveSavedPlaceRequest.class))).thenReturn(new SaveResult(withTags, true));
+		String body = """
+			{"providerPlaceId":"123","name":"예시 카페","address":"서울 성북구 삼선동 1","lat":37.5822,"lng":127.0105,
+			 "tags":[{"label":"아늑해요","mentionCount":12}]}
+			""";
+
+		mvc.perform(post(URL).with(member()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.tags[0].label").value("아늑해요"))
+			.andExpect(jsonPath("$.data.tags[0].mentionCount").value(12));
+		verify(service).save(MEMBER_ID, new SaveSavedPlaceRequest("123", "예시 카페", "서울 성북구 삼선동 1", null, null, null,
+				37.5822, 127.0105, null, List.of(new SaveSavedPlaceRequest.TagRequest("아늑해요", 12))));
+	}
+
+	@Test
+	@DisplayName("tags가 6개 이상이거나 label이 비었거나 mentionCount가 음수면 400이다")
+	void rejectsInvalidTags() throws Exception {
+		String base = "{\"providerPlaceId\":\"123\",\"name\":\"예시 카페\",\"address\":\"주소\",\"lat\":37.5,\"lng\":127.0,\"tags\":";
+		String six = "[" + "{\"label\":\"a\",\"mentionCount\":1},".repeat(5) + "{\"label\":\"a\",\"mentionCount\":1}]";
+		for (String tags : List.of(six, "[{\"label\":\" \",\"mentionCount\":1}]", "[{\"label\":\"a\",\"mentionCount\":-1}]")) {
+			mvc.perform(post(URL).with(member()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+					.content(base + tags + "}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		}
+		verifyNoInteractions(service);
 	}
 
 	@Test

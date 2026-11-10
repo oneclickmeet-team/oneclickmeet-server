@@ -4,6 +4,7 @@ import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 public record SavedPlaceResponse(
 		long savedPlaceId,
@@ -16,7 +17,8 @@ public record SavedPlaceResponse(
 		double lat,
 		double lng,
 		String placeUrl,
-		Instant savedAt) {
+		Instant savedAt,
+		List<ResolvedPlaceResponse.TagResponse> tags) {
 
 	public static SavedPlaceResponse from(SavedPlace place) {
 		return new SavedPlaceResponse(
@@ -30,6 +32,9 @@ public record SavedPlaceResponse(
 				place.getLat(),
 				place.getLng(),
 				place.getPlaceUrl(),
-				place.getCreatedAt() == null ? null : place.getCreatedAt().truncatedTo(ChronoUnit.MICROS));
+				place.getCreatedAt() == null ? null : place.getCreatedAt().truncatedTo(ChronoUnit.MICROS),
+				place.getTags().stream()
+						.map(tag -> new ResolvedPlaceResponse.TagResponse(tag.label(), tag.mentionCount()))
+						.toList());
 	}
 }

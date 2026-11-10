@@ -11,9 +11,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 /**
  * 개인 보관함에 저장한 장소. 장소 정보(이름·주소·좌표 등)는 저장 시점의 값을 이 행에 함께 보관한다(A안).
@@ -29,6 +33,8 @@ import lombok.NoArgsConstructor;
 public class SavedPlace extends BaseEntity {
 
 	public static final String MEMBER_PLACE_UNIQUE = "uk_saved_places_member_place";
+	public static final int MAX_TAGS = 5;
+	public static final int MAX_TAG_LABEL_LENGTH = 50;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,8 +74,14 @@ public class SavedPlace extends BaseEntity {
 	@Column(length = 500)
 	private String placeUrl;
 
+	/** 블로그 언급 기반 태그. 태그가 없으면 null로 저장하고, 기존 행도 null이다. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(columnDefinition = "json")
+	private List<SavedPlaceTag> tags;
+
 	private SavedPlace(long memberId, PlaceProvider provider, String providerPlaceId, String name, String address,
-			String roadAddress, String category, String categoryGroupCode, double lat, double lng, String placeUrl) {
+			String roadAddress, String category, String categoryGroupCode, double lat, double lng, String placeUrl,
+			List<SavedPlaceTag> tags) {
 		this.memberId = memberId;
 		this.provider = provider;
 		this.providerPlaceId = providerPlaceId;
@@ -81,11 +93,23 @@ public class SavedPlace extends BaseEntity {
 		this.lat = lat;
 		this.lng = lng;
 		this.placeUrl = placeUrl;
+		this.tags = tags;
+	}
+
+	public List<SavedPlaceTag> getTags() {
+		return tags == null ? List.of() : tags;
 	}
 
 	public static SavedPlace create(long memberId, PlaceProvider provider, String providerPlaceId, String name,
 			String address, String roadAddress, String category, String categoryGroupCode, double lat, double lng,
 			String placeUrl) {
+		return create(memberId, provider, providerPlaceId, name, address, roadAddress, category, categoryGroupCode,
+				lat, lng, placeUrl, null);
+	}
+
+	public static SavedPlace create(long memberId, PlaceProvider provider, String providerPlaceId, String name,
+			String address, String roadAddress, String category, String categoryGroupCode, double lat, double lng,
+			String placeUrl, List<SavedPlaceTag> tags) {
 		if (memberId <= 0) {
 			throw new IllegalArgumentException("memberId는 양수여야 합니다.");
 		}
@@ -107,7 +131,26 @@ public class SavedPlace extends BaseEntity {
 		}
 		return new SavedPlace(memberId, provider, providerPlaceId.trim(), name.trim(), address.trim(),
 				blankToNull(roadAddress), blankToNull(category), blankToNull(categoryGroupCode), lat, lng,
-				blankToNull(placeUrl));
+				blankToNull(placeUrl), normalizeTags(tags));
+	}
+
+	private static List<SavedPlaceTag> normalizeTags(List<SavedPlaceTag> tags) {
+		if (tags == null || tags.isEmpty()) {
+			return null;
+		}
+		if (tags.size() > MAX_TAGS) {
+			throw new IllegalArgumentException("tags는 " + MAX_TAGS + "개 이하여야 합니다.");
+		}
+		for (SavedPlaceTag tag : tags) {
+			if (tag == null) {
+				throw new IllegalArgumentException("tags에 null을 넣을 수 없습니다.");
+			}
+			requireText(tag.label(), MAX_TAG_LABEL_LENGTH, "tag label");
+			if (tag.mentionCount() < 0) {
+				throw new IllegalArgumentException("tag mentionCount는 0 이상이어야 합니다.");
+			}
+		}
+		return tags.stream().map(tag -> new SavedPlaceTag(tag.label().trim(), tag.mentionCount())).toList();
 	}
 
 	private static void requireText(String value, int maxLength, String field) {

@@ -45,7 +45,7 @@ class SavedPlaceServiceTests {
 
 	private static SaveSavedPlaceRequest request(String providerPlaceId, String groupCode) {
 		return new SaveSavedPlaceRequest(providerPlaceId, "장소 " + providerPlaceId, "서울 성북구 삼선동 1", "도로명",
-				"음식점 > 카페", groupCode, 37.5822, 127.0105, "http://place.map.kakao.com/" + providerPlaceId);
+				"음식점 > 카페", groupCode, 37.5822, 127.0105, "http://place.map.kakao.com/" + providerPlaceId, null);
 	}
 
 	private void age(long savedPlaceId, String createdAt) {
@@ -83,10 +83,38 @@ class SavedPlaceServiceTests {
 	}
 
 	@Test
+	@DisplayName("tags를 저장하고 저장·조회 응답에 그대로 돌려준다")
+	void savesAndReturnsTags() {
+		SaveSavedPlaceRequest withTags = new SaveSavedPlaceRequest("100", "장소 100", "주소", null, null, "CE7", 37.5, 127.0,
+				null, List.of(new SaveSavedPlaceRequest.TagRequest("아늑해요", 12),
+						new SaveSavedPlaceRequest.TagRequest("뷰가 좋아요", 7)));
+
+		SaveResult saved = service.save(MEMBER, withTags);
+		SavedPlaceResponse detail = service.detail(MEMBER, saved.place().savedPlaceId());
+
+		assertThat(saved.place().tags()).extracting(tag -> tag.label() + ":" + tag.mentionCount())
+				.containsExactly("아늑해요:12", "뷰가 좋아요:7");
+		assertThat(detail.tags()).isEqualTo(saved.place().tags());
+	}
+
+	@Test
+	@DisplayName("tags가 없거나 비어 있어도 저장되고 응답의 tags는 빈 목록이다")
+	void savesWithoutTags() {
+		SaveSavedPlaceRequest empty = new SaveSavedPlaceRequest("101", "장소 101", "주소", null, null, null, 37.5, 127.0,
+				null, List.of());
+
+		assertThat(service.save(MEMBER, request("100", "CE7")).place().tags()).isEmpty();
+		SaveResult saved = service.save(MEMBER, empty);
+		assertThat(saved.place().tags()).isEmpty();
+		assertThat(jdbc.queryForObject("select tags from saved_places where id = ?", String.class,
+				saved.place().savedPlaceId())).isNull();
+	}
+
+	@Test
 	@DisplayName("다시 저장해도 처음 저장한 값과 저장 시각은 바뀌지 않는다")
 	void keepsOriginalValuesWhenSavedAgain() {
 		SaveResult first = service.save(MEMBER, request("100", "CE7"));
-		SaveSavedPlaceRequest changed = new SaveSavedPlaceRequest("100", "바뀐 이름", "바뀐 주소", null, null, null, 1.0, 2.0, null);
+		SaveSavedPlaceRequest changed = new SaveSavedPlaceRequest("100", "바뀐 이름", "바뀐 주소", null, null, null, 1.0, 2.0, null, null);
 
 		SaveResult second = service.save(MEMBER, changed);
 
