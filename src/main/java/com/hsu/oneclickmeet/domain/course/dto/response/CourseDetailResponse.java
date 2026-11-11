@@ -8,7 +8,8 @@ public record CourseDetailResponse(long courseId, String courseName, List<Place>
 		Instant createdAt, Instant updatedAt) {
 
 	public record Place(long coursePlaceId, Long placeId, String placeName, Double latitude, Double longitude,
-			Integer estimatedWalkingMinutesFromPrevious, List<Menu> menuList, long selectedSubtotal) {
+			Integer estimatedWalkingMinutesFromPrevious, List<Menu> menuList, long selectedSubtotal,
+			String provider, String providerPlaceId, String address) {
 	}
 
 	public record Menu(long menuId, String menuName, int price, boolean selected, Instant updatedAt) {

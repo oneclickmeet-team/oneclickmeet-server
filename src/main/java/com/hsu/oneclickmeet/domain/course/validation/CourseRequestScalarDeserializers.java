@@ -43,6 +43,17 @@ public final class CourseRequestScalarDeserializers {
 		}
 	}
 
+	public static final class DoubleValue extends ValueDeserializer<Double> {
+
+		@Override
+		public Double deserialize(JsonParser parser, DeserializationContext context) {
+			if (!parser.currentToken().isNumeric()) {
+				return context.reportInputMismatch(Double.class, "JSON 숫자가 필요합니다.");
+			}
+			return parser.getDoubleValue();
+		}
+	}
+
 	public static final class BooleanValue extends ValueDeserializer<Boolean> {
 
 		@Override

@@ -59,17 +59,23 @@ public class CourseSaveService {
 
 	private Course buildCourse(long memberId, CreateCourseRequest request, CoursePlaceLookup placeLookup) {
 		List<Course.PlaceInput> places = new ArrayList<>();
+		var selection = new CoursePlaceSelection();
 		int visitOrder = 1;
 		for (var placeRequest : request.places()) {
-			long placeId = placeRequest.placeId();
-			String name = placeLookup.findPlaceName(memberId, placeId)
-					.orElseThrow(() -> new BusinessException(CourseErrorCode.SOURCE_PLACE_NOT_FOUND));
+			Long placeId = placeRequest.placeId();
+			var snapshotRequest = placeRequest.placeSnapshot();
+			var snapshot = snapshotRequest == null ? null : CoursePlaceSelection.snapshotOf(snapshotRequest);
+			String name = snapshotRequest == null
+					? placeLookup.findPlaceName(memberId, placeId)
+							.orElseThrow(() -> new BusinessException(CourseErrorCode.SOURCE_PLACE_NOT_FOUND))
+					: snapshotRequest.name();
+			selection.add(placeId, name, snapshot);
 			List<Course.MenuInput> menus = new ArrayList<>();
 			int menuOrder = 1;
 			for (var menu : placeRequest.menuList()) {
 				menus.add(new Course.MenuInput(menu.menuName(), menu.price(), menuOrder++, menu.selected()));
 			}
-			places.add(new Course.PlaceInput(placeId, name, visitOrder++, menus));
+			places.add(new Course.PlaceInput(placeId, name, visitOrder++, menus, snapshot));
 		}
 		return Course.create(request.courseName(), places);
 	}

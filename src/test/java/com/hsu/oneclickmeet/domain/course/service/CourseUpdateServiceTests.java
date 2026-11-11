@@ -1,5 +1,6 @@
 package com.hsu.oneclickmeet.domain.course.service;
 
+import com.hsu.oneclickmeet.domain.course.dto.request.CoursePlaceSnapshotRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.UpdateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.UpdateCourseRequest.MenuRequest;
@@ -53,6 +54,52 @@ class CourseUpdateServiceTests {
 
 	@MockitoBean
 	private CoursePlaceLookup placeLookup;
+
+	@Test
+	void savesAndEditsSnapshotPlacesAlongsideLegacySavedPlaces() {
+		long owner = 410L;
+		var cafe = new CoursePlaceSnapshotRequest("987", "연남 카페", "연남로 2", 37.5631, 126.9282);
+		var park = new CoursePlaceSnapshotRequest(null, "연남 공원", null, 37.56, 126.92);
+		var create = new CreateCourseRequest("추천 코스", List.of(
+			new CreateCourseRequest.PlaceRequest(null, List.of(
+				new CreateCourseRequest.MenuRequest(null, "커피", 5000, true)), cafe),
+			new CreateCourseRequest.PlaceRequest(501L, List.of()),
+			new CreateCourseRequest.PlaceRequest(null, List.of(), park)));
+		long courseId = saveService.save(owner, UUID.randomUUID(), create, (memberId, placeId) -> {
+			assertThat(memberId).isEqualTo(owner);
+			assertThat(placeId).isEqualTo(501L);
+			return Optional.of("기존 보관함 장소");
+		});
+		var original = readService.detail(owner, courseId);
+		assertThat(original.places()).extracting(Place::placeId, Place::placeName, Place::provider,
+				Place::providerPlaceId, Place::address, Place::latitude, Place::longitude)
+			.containsExactly(
+				tuple(null, "연남 카페", "KAKAO", "987", "연남로 2", 37.5631, 126.9282),
+				tuple(501L, "기존 보관함 장소", null, null, null, null, null),
+				tuple(null, "연남 공원", null, null, null, 37.56, 126.92));
+
+		var retainedCafe = original.places().getFirst();
+		var retainedSavedPlace = original.places().get(1);
+		var menu = retainedCafe.menuList().getFirst();
+		var bakery = new CoursePlaceSnapshotRequest("654", "연남 빵집", "연남로 5", 37.57, 126.93);
+		updateService.update(owner, courseId, UUID.randomUUID(), new UpdateCourseRequest("수정한 추천 코스", List.of(
+			copyPlace(retainedSavedPlace),
+			new PlaceRequest(retainedCafe.coursePlaceId(), null, List.of(new MenuRequest(menu.menuId(), "라떼", 6000, true))),
+			new PlaceRequest(null, null, List.of(), bakery))));
+
+		var updated = readService.detail(owner, courseId);
+		assertThat(updated.courseName()).isEqualTo("수정한 추천 코스");
+		assertThat(updated.places()).extracting(Place::placeName, Place::providerPlaceId, Place::latitude)
+			.containsExactly(tuple("기존 보관함 장소", null, null), tuple("연남 카페", "987", 37.5631),
+				tuple("연남 빵집", "654", 37.57));
+		assertThat(updated.places().get(1).coursePlaceId()).isEqualTo(retainedCafe.coursePlaceId());
+		assertThat(updated.places().get(1).menuList()).singleElement()
+			.satisfies(edited -> {
+				assertThat(edited.menuId()).isEqualTo(menu.menuId());
+				assertThat(edited.menuName()).isEqualTo("라떼");
+			});
+		verifyNoInteractions(placeLookup);
+	}
 
 	@Test
 	void reordersPlacesAndMenusWithoutReplacingTheirIds() {
