@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,6 +63,8 @@ public class CourseUpdateService {
 		List<Course.PlaceChange> changes = request.places().stream()
 				.map(place -> toPlaceChange(memberId, course, place))
 				.toList();
+		var selection = new CoursePlaceSelection();
+		changes.forEach(change -> selection.add(change.originalPlaceId(), change.name(), change.snapshot()));
 		course.replaceContents(request.courseName(), changes);
 		// Hibernate's root auditing does not run when only children change.
 		Instant updatedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -88,17 +91,24 @@ public class CourseUpdateService {
 			}
 			return new Course.MenuChange(menu.menuId(), menu.menuName(), menu.price(), menu.selected());
 		}).toList();
-		String name = existing == null
-				? placeLookup.flatMap(lookup -> lookup.findPlaceName(memberId, request.placeId()))
-						.orElseThrow(() -> new BusinessException(CourseErrorCode.SOURCE_PLACE_NOT_FOUND))
-				: existing.getName();
-		return new Course.PlaceChange(request.coursePlaceId(), request.placeId(), name, menus);
+		if (existing != null) {
+			return new Course.PlaceChange(existing.getId(), existing.getOriginalPlaceId(), existing.getName(), menus,
+					existing.getSnapshot());
+		}
+		var snapshotRequest = request.placeSnapshot();
+		if (snapshotRequest != null) {
+			return new Course.PlaceChange(null, null, snapshotRequest.name(), menus,
+					CoursePlaceSelection.snapshotOf(snapshotRequest));
+		}
+		String name = placeLookup.flatMap(lookup -> lookup.findPlaceName(memberId, request.placeId()))
+				.orElseThrow(() -> new BusinessException(CourseErrorCode.SOURCE_PLACE_NOT_FOUND));
+		return new Course.PlaceChange(null, request.placeId(), name, menus, null);
 	}
 
 	private CoursePlace findExistingPlace(Course course, UpdateCourseRequest.PlaceRequest request) {
 		return course.getPlaces().stream()
 				.filter(place -> request.coursePlaceId().equals(place.getId())
-						&& request.placeId().equals(place.getOriginalPlaceId()))
+						&& (request.placeId() == null || Objects.equals(request.placeId(), place.getOriginalPlaceId())))
 				.findFirst()
 				.orElseThrow(() -> new BusinessException(CommonErrorCode.BAD_REQUEST));
 	}

@@ -19,6 +19,6 @@ class CourseWalkingWarningTests {
 	}
 
 	private Place place(long id, Integer minutes) {
-		return new Place(id, id + 100, "장소 " + id, null, null, minutes, List.of(), 0);
+		return new Place(id, id + 100, "장소 " + id, null, null, minutes, List.of(), 0, null, null, null);
 	}
 }

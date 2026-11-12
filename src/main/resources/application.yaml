@@ -1,6 +1,10 @@
 spring:
   application:
     name: oneclickme
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 30MB
 kakao:
   local:
     rest-api-key: ${KAKAO_REST_API_KEY:}

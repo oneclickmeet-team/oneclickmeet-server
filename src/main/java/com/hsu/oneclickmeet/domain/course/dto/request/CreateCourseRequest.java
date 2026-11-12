@@ -1,9 +1,12 @@
 package com.hsu.oneclickmeet.domain.course.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hsu.oneclickmeet.domain.course.validation.CourseRequestScalarDeserializers;
 import com.hsu.oneclickmeet.domain.course.validation.DistinctCoursePlaces;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -32,12 +35,23 @@ public record CreateCourseRequest(
 
 	public record PlaceRequest(
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.LongValue.class)
-		@NotNull @Positive Long placeId,
-		@NotNull @Size(max = 50) List<@NotNull @Valid MenuRequest> menuList
+		@Positive Long placeId,
+		@NotNull @Size(max = 50) List<@NotNull @Valid MenuRequest> menuList,
+		@JsonInclude(JsonInclude.Include.NON_NULL) @Valid CoursePlaceSnapshotRequest placeSnapshot
 	) {
 
 		public PlaceRequest {
 			menuList = copyList(menuList);
+		}
+
+		public PlaceRequest(Long placeId, List<MenuRequest> menuList) {
+			this(placeId, menuList, null);
+		}
+
+		@JsonIgnore
+		@AssertTrue(message = "placeId와 placeSnapshot 중 하나를 지정해 주세요.")
+		public boolean isPlaceReferenceValid() {
+			return (placeId != null) != (placeSnapshot != null);
 		}
 	}
 

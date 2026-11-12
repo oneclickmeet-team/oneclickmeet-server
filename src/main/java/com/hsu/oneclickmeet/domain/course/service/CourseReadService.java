@@ -66,8 +66,14 @@ public class CourseReadService {
 				.map(menu -> new Menu(menu.getId(), menu.getName(), menu.getPrice(), menu.getSelected(), menu.getUpdatedAt()))
 				.toList();
 		long subtotal = menus.stream().filter(Menu::selected).mapToLong(Menu::price).sum();
-		// The saved place snapshot supplies the original ID and name. Coordinates and route estimates are pending.
-		return new Place(place.getId(), place.getOriginalPlaceId(), place.getName(), null, null, null, menus, subtotal);
+		var snapshot = place.getSnapshot();
+		if (snapshot == null) {
+			return new Place(place.getId(), place.getOriginalPlaceId(), place.getName(), null, null, null, menus, subtotal,
+					null, null, null);
+		}
+		return new Place(place.getId(), place.getOriginalPlaceId(), place.getName(), snapshot.getLatitude(),
+				snapshot.getLongitude(), null, menus, subtotal, snapshot.getProvider(), snapshot.getProviderPlaceId(),
+				snapshot.getAddress());
 	}
 
 	static List<Warning> walkingWarnings(List<Place> places) {
