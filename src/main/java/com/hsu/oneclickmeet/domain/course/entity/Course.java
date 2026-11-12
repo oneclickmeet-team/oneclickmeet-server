@@ -71,7 +71,8 @@ public class Course extends BaseEntity {
 		int position = 1;
 		for (PlaceChange change : changes) {
 			CoursePlace place = change.coursePlaceId() == null
-				? new CoursePlace(this, new PlaceInput(change.originalPlaceId(), change.name(), position, List.of()))
+				? new CoursePlace(this, new PlaceInput(change.originalPlaceId(), change.name(), position, List.of(),
+						change.snapshot()))
 				: Objects.requireNonNull(existingPlaces.get(change.coursePlaceId()));
 			place.replaceContents(position++, change.menus());
 			updatedPlaces.add(place);
@@ -100,18 +101,23 @@ public class Course extends BaseEntity {
 				.map(place -> new PlaceInput(place.getOriginalPlaceId(), place.getName(), place.getPosition(),
 						place.getMenuList().stream()
 								.map(menu -> new MenuInput(menu.getName(), menu.getPrice(), menu.getPosition(), menu.getSelected()))
-								.toList()))
+								.toList(), place.getSnapshot()))
 				.toList();
 		return create(name, copy);
 	}
 
-	public record PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus) {
+	public record PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus,
+			CoursePlaceSnapshot snapshot) {
+		public PlaceInput(Long originalPlaceId, String name, Integer position, List<MenuInput> menus) {
+			this(originalPlaceId, name, position, menus, null);
+		}
 	}
 
 	public record MenuInput(String name, Integer price, Integer position, boolean selected) {
 	}
 
-	public record PlaceChange(Long coursePlaceId, Long originalPlaceId, String name, List<MenuChange> menus) {
+	public record PlaceChange(Long coursePlaceId, Long originalPlaceId, String name, List<MenuChange> menus,
+			CoursePlaceSnapshot snapshot) {
 	}
 
 	public record MenuChange(Long menuId, String name, Integer price, boolean selected) {

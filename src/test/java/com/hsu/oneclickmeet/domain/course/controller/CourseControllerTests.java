@@ -1,5 +1,6 @@
 package com.hsu.oneclickmeet.domain.course.controller;
 
+import com.hsu.oneclickmeet.domain.course.dto.request.CoursePlaceSnapshotRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.MenuRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
@@ -65,6 +66,16 @@ class CourseControllerTests {
 			  ]
 			}
 			""";
+	private static final String CREATE_SNAPSHOT_BODY = """
+			{
+			  "courseName": "산책 코스",
+			  "places": [
+			    {%s"menuList": []},
+			    {"placeId": 52, "menuList": []},
+			    {"placeId": 53, "menuList": []}
+			  ]
+			}
+			""";
 	private static final String UPDATE_BODY = """
 			{
 			  "courseName": "산책 코스",
@@ -110,6 +121,40 @@ class CourseControllerTests {
 			.andExpect(jsonPath("$.data.courseId").value(COURSE_ID))
 			.andExpect(jsonPath("$.error").value(nullValue()));
 		verify(courseSaveService).save(eq(MEMBER_ID), eq(REQUEST_KEY), eq(request), same(coursePlaceLookup));
+	}
+
+	@Test
+	void 개인_코스_저장에_보관함_ID_없이_장소_스냅샷을_받는다() throws Exception {
+		var snapshot = new CoursePlaceSnapshotRequest("987", "연남 카페", "연남로 2", 37.5631, 126.9282);
+		var request = new CreateCourseRequest("산책 코스", List.of(
+			new PlaceRequest(null, List.of(), snapshot),
+			new PlaceRequest(52L, List.of()), new PlaceRequest(53L, List.of())));
+		when(courseSaveService.save(eq(MEMBER_ID), eq(REQUEST_KEY), eq(request), same(coursePlaceLookup)))
+			.thenReturn(COURSE_ID);
+
+		mvc.perform(post(COURSES_URL).with(member(MEMBER_ID)).with(csrf())
+			.header("Idempotency-Key", REQUEST_KEY).contentType(MediaType.APPLICATION_JSON)
+			.content(CREATE_SNAPSHOT_BODY.formatted("""
+				"placeSnapshot": {"providerPlaceId": "987", "name": "연남 카페", "address": "연남로 2",
+				  "lat": 37.5631, "lng": 126.9282},
+				""")))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.courseId").value(COURSE_ID));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"",
+		"\"placeId\": 51, \"placeSnapshot\": {\"name\": \"공원\", \"lat\": 37.56, \"lng\": 126.92},",
+		"\"placeSnapshot\": {\"name\": \"공원\", \"lat\": 90.1, \"lng\": 126.92},"
+	})
+	void 개인_코스_저장에_유효한_장소_출처가_하나씩_필요하다(String placeSource) throws Exception {
+		mvc.perform(post(COURSES_URL).with(member(MEMBER_ID)).with(csrf())
+			.header("Idempotency-Key", REQUEST_KEY).contentType(MediaType.APPLICATION_JSON)
+			.content(CREATE_SNAPSHOT_BODY.formatted(placeSource)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("COMMON-0400"));
+		verifyNoInteractions(courseSaveService);
 	}
 
 	@Test
@@ -201,7 +246,8 @@ class CourseControllerTests {
 	@Test
 	void 상세는_저장된_장소와_메뉴를_응답에_포함한다() throws Exception {
 		var menu = new CourseDetailResponse.Menu(11L, "파스타", 24_000, true, CREATED_AT);
-		var place = new CourseDetailResponse.Place(21L, 51L, "식당", null, null, null, List.of(menu), 24_000);
+		var place = new CourseDetailResponse.Place(21L, 51L, "식당", null, null, null, List.of(menu), 24_000,
+			null, null, null);
 		when(courseReadService.detail(MEMBER_ID, COURSE_ID)).thenReturn(new CourseDetailResponse(
 			COURSE_ID, "산책 코스", List.of(place), 24_000, 0, null, List.of(), CREATED_AT, CREATED_AT));
 

@@ -3,6 +3,7 @@ package com.hsu.oneclickmeet.domain.course.entity;
 import com.hsu.oneclickmeet.global.entity.BaseEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -40,6 +41,9 @@ public class CoursePlace extends BaseEntity {
 	@Column(name = "place_name", nullable = false)
 	private String name;
 
+	@Embedded
+	private CoursePlaceSnapshot snapshot;
+
     @Column(name = "place_memo")
     private String memo;
 
@@ -58,6 +62,7 @@ public class CoursePlace extends BaseEntity {
 		this.course = course;
 		this.originalPlaceId = input.originalPlaceId();
 		this.name = input.name();
+		this.snapshot = input.snapshot();
 		this.position = input.position();
 		for (Course.MenuInput menu : input.menus()) {
 			menuList.add(new CoursePlaceMenu(this, menu));

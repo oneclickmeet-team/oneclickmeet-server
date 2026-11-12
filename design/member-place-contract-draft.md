@@ -1,7 +1,7 @@
 # 회원·장소 데이터 모델 및 인증·API 계약
 
 - 작성: 승진 (member · place 담당)
-- 상태: **구현 반영(2026-11-09).** 맨 앞 "구현 결과"가 현재 기준이고, 그 아래 §0~§6은 10/30 제안 원문(결정 기록)이다. 둘이 다르면 "구현 결과"가 맞다.
+- 상태: **구현 반영(2026-11-09, 코스 장소 스냅샷 11/11 반영).** 맨 앞 "구현 결과"가 현재 기준이고, 그 아래 §0~§6은 10/30 제안 원문(결정 기록)이다. 둘이 다르면 "구현 결과"가 맞다.
 - 승진 결정(10/30): 장소는 **A안(`saved_places` 한 테이블)으로 시작**한다. 필요해지면 B안(`places` 분리)으로 옮긴다(§2.2).
 - 기준 자료: `main`@3fd3ce9 (#14 머지 후), `docs/conventions.md`, `CODEOWNERS`, 백엔드 TRD 초안 v0.1(연경, 10/14), 기능 명세서 v0.1
 - 확인하지 못한 것: TRD v1.0(10/18, 재원 작성)의 API 49개 목록 원문. 아래 API 목록은 TRD v1.0과 대조해야 한다.
@@ -19,7 +19,22 @@
 | `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `tags`(JSON, nullable, 블로그 태그 최대 5개, #89) 추가, `source_url`·`hours`는 미구현 |
 | `activities`, `notifications` (#62) | 회원별 활동 기록과 알림(읽음 시각) | 제안 범위 밖이던 영역 |
 
-- **코스와 보관함(§2.3):** 재원의 `course`는 `CoursePlace`에 `original_place_id`(보관함 장소 번호)와 저장 시점의 `place_name`을 두고, 장소 이름은 `CoursePlaceLookup`으로 조회한다. 이 인터페이스를 장소 도메인이 구현했다(`SavedPlaceCourseLookup`, 본인의 보관함 장소일 때만 이름 반환, #60). 좌표 등 스냅샷 컬럼 추가는 하지 않은 상태다. **시연 전에 코스 저장을 장소 스냅샷 방식으로 바꾼다**(재원, 2026-11-09): 보관함에 없는 외부 추천 장소도 코스에 담을 수 있어야 하고, 코스를 저장해도 보관함은 그대로다. 요청 필드와 기존 코스 호환은 재원이 정리해 앱 팀에 공유한다.
+#### 코스와 보관함 (§2.3)
+
+개인 코스 생성·수정은 앱이 확정한 장소의 `providerPlaceId`, `name`, `address`, `lat`, `lng`를 `CoursePlace`에 저장한다. 서버는 `providerPlaceId`가 있으면 `provider`를 `KAKAO`로 저장한다. 식별자가 없는 스냅샷은 `provider`와 `provider_place_id`가 `NULL`이다. 스냅샷은 보관함과 독립적으로 저장되며 `original_place_id`가 `NULL`이다. `tags`는 보관함 데이터로 관리한다. [코스 생성·수정 요청 예시](app-integration-guide.md#코스-추천-결과-저장)를 참고한다.
+
+보관함 번호로 새 장소를 추가하면 기존과 같이 `CoursePlaceLookup`으로 본인의 보관함 항목을 찾아 `original_place_id`와 `place_name`을 저장한다. 기존 코스는 두 값을 그대로 사용하며, 수정할 때 유지하는 장소는 `coursePlaceId`로 찾는다. 기존 행의 스냅샷 컬럼에는 `NULL`을 유지한다.
+
+기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW COLUMNS FROM course_place;`로 아래 컬럼을 확인한다. 전부 없을 때 아래 DDL을 적용하고, 이미 존재하는 컬럼이 있다면 정의를 확인한 뒤 빠진 컬럼만 추가한다.
+
+```sql
+ALTER TABLE course_place
+  ADD COLUMN provider VARCHAR(16) NULL,
+  ADD COLUMN provider_place_id VARCHAR(64) NULL,
+  ADD COLUMN address VARCHAR(300) NULL,
+  ADD COLUMN lat DOUBLE NULL,
+  ADD COLUMN lng DOUBLE NULL;
+```
 
 ### 인증 (#68, 재원 승인 후 병합)
 
@@ -56,7 +71,7 @@
 | 질문 | 상태 |
 |---|---|
 | 1. 테이블 이름·PK 전략 | 새 테이블은 컨벤션대로 복수형 snake_case + `IDENTITY` |
-| 2. 코스의 장소 참조 방식 | 위 "코스와 보관함"처럼 `original_place_id` + 이름 조회로 진행했으나, **시연 전에 스냅샷 방식으로 변경**하기로 함(재원, 2026-11-09) |
+| 2. 코스의 장소 참조 방식 | 개인 코스가 장소 스냅샷을 보관하고, 이전 보관함 번호 기반 코스도 조회·수정할 수 있다. 위 "코스와 보관함" 참고 |
 | 3. Security 설정 위치 | `global/config`(재원 승인) |
 | 4. 현재 사용자 표현 | `@AuthenticationPrincipal Long memberId` |
 | 5. 이메일 가입 | 카카오·구글 구현. 이메일 가입·로그인은 시연에 포함하기로 해 재원이 추가 예정 |
@@ -67,7 +82,7 @@
 
 - 공동 보관함 공유, 메모의 보관함 장소 접근 확인(`MemoTargetAccess`의 `TODO(#19)`, 재원 영역): 개인 장소(`PLACE`)와 공동 장소(`SHARED_PLACE`) 메모를 모두 연결한다. 공동 장소는 공동 보관함 대상 ID·관계별 접근 권한·공유 취소/삭제 시 메모 처리 규칙을 먼저 맞춘다.
 - 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
-- 코스 저장의 스냅샷 방식 전환, 이메일 회원가입·로그인(재원, 시연 전).
+- 이메일 회원가입·로그인(재원, 시연 전).
 - 업로드 한도 설정(파일당 5MB, 요청 전체 6MB, 재원 영역), 토큰 유효 시간 정책 확정. `.env.example`의 환경변수 항목은 #84에서 추가했다.
 - 실제 AI 서버 호출 검증(시연용 주소·키는 11/11 전 수령 예정), FCM 실제 전송(후속).
 - 보관함에 AI 카테고리 코드(`categoryCode`)를 저장할지는 보류했다. 지금은 카카오 `categoryGroupCode`를 추천 요청 때 AI 코드로 변환하고, 매핑이 안 되는 값은 AI가 추론한다. 저장하려면 인식·직접 검색에서 값을 어떻게 채울지와 기존 보관함의 빈 값 처리를 먼저 맞춘 뒤 스키마 변경을 검토한다.
