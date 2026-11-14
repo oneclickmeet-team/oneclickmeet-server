@@ -53,7 +53,7 @@ ALTER TABLE course_place
 | `GET` · `PATCH /members/me` | 구현(#68). 수정은 닉네임만 |
 | `DELETE /members/me` | 개발하지 않음(시연에 쓰이지 않아 제외, 2026-11-08, §5-6) |
 | `GET /places/search` | 구현(#22, #58). 커서 방식으로 변경(#85): `cursor`·`size`, 응답 `items`·`nextCursor`·`hasNext` |
-| `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82), 추가 캡처 `extraImages` 최대 4장(#87). 실제 AI 서버 호출 검증은 아직 |
+| `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82), 추가 캡처 `extraImages` 최대 4장(#87·#88). AI 서버 직접 호출은 11/11 확인, 서버 API를 거친 전체 흐름은 아직 |
 | `POST` · `GET` · `GET /{id}` · `DELETE /saved-places` | 구현(#60). 같은 장소 다시 저장은 409가 아니라 **기존 항목과 200**(새로 저장은 201). 목록은 커서 방식(`items`, `nextCursor`, `hasNext`) |
 | `GET /saved-places/{id}/nearby` | 구현(#72) |
 | `POST /saved-places/{id}/share` | 미구현(공유 영역과 합의 후) |
@@ -84,7 +84,7 @@ ALTER TABLE course_place
 - 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
 - 이메일 회원가입·로그인(재원, 시연 전).
 - 업로드 한도 설정(파일당 5MB, 요청 전체 6MB, 재원 영역), 토큰 유효 시간 정책 확정. `.env.example`의 환경변수 항목은 #84에서 추가했다.
-- 실제 AI 서버 호출 검증(시연용 주소·키는 11/11 전 수령 예정), FCM 실제 전송(후속).
+- 서버 API를 거친 AI 전체 흐름·스크린샷 인식 품질 확인(AI 서버 직접 호출은 11/11 확인), FCM 실제 전송(후속).
 - 보관함에 AI 카테고리 코드(`categoryCode`)를 저장할지는 보류했다. 지금은 카카오 `categoryGroupCode`를 추천 요청 때 AI 코드로 변환하고, 매핑이 안 되는 값은 AI가 추론한다. 저장하려면 인식·직접 검색에서 값을 어떻게 채울지와 기존 보관함의 빈 값 처리를 먼저 맞춘 뒤 스키마 변경을 검토한다.
 - API 목록을 TRD v1.0과 대조, ERD(DBML, #10)에 실제 테이블 반영.
 

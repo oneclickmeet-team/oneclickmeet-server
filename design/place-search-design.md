@@ -144,7 +144,7 @@
 | API | 상태 |
 |---|---|
 | `POST` `GET` `GET/{id}` `DELETE` `/api/v1/saved-places` | 구현(#60). 저장은 멱등(새로 저장 201, 이미 저장 200), 목록은 커서 방식, 타인의 항목은 404 |
-| `POST /api/v1/places/resolve/link`, `/image` | 구현(#64, AI 서버 내부 API v2.1 연동 #76). 이미지 인식은 읽기 제한 시간 70초(#82). **실제 AI 서버 호출 검증은 아직**. AI를 쓸 수 없으면 링크는 단순 규칙으로 대체·이미지는 `NEEDS_SEARCH` |
+| `POST /api/v1/places/resolve/link`, `/image` | 구현(#64, AI 서버 내부 API v2.1 연동 #76). 이미지 인식은 읽기 제한 시간 70초(#82). AI 서버 직접 호출은 11/11에 확인(링크·이미지 인식, `extraImages` 2장 허용·5장 거부, 코스 추천). 서버 API를 거친 전체 흐름은 아직. AI를 쓸 수 없으면 링크는 단순 규칙으로 대체·이미지는 `NEEDS_SEARCH` |
 | `GET /api/v1/saved-places/{id}/nearby?category=CAFE\|RESTAURANT\|EXHIBITION\|PARK` | 구현(#72). 반경 1km, 가까운 순, 직선거리(`distanceMeters`) 포함, 기준 장소 제외 |
 | `POST /api/v1/recommendations/courses` | 구현(#66), AI 서버(R01)에 위임하도록 변경(#80). 방문 순서별 카테고리·필수 장소 입력. AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않으며 코스 저장은 재원이 스냅샷 방식으로 바꾼다 |
 | `POST /saved-places/{id}/share` | 미구현(`couple`/공유 영역과 합의 후) |
@@ -163,4 +163,5 @@
 
 - [ ] 카카오 일일 한도·약관 확인, 호출 수 지표의 외부 노출·경보
 - [ ] 서버를 실제 키로 띄워 카카오와 붙는 end-to-end 확인(지금은 가짜 응답과 단발 직접 호출로만 확인)
-- [ ] 실제 AI 서버로 링크·이미지 인식, 코스 추천 호출 확인(시연용 주소·키는 11/11 전 수령 예정)
+- [x] 실제 AI 서버로 링크·이미지 인식, 코스 추천 직접 호출 확인(2026-11-11)
+- [ ] 앱 요청 → 서버 API → AI 서버 전체 흐름 확인, 실제 스크린샷 인식 품질 확인
