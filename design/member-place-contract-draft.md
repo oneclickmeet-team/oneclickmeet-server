@@ -25,7 +25,7 @@
 
 보관함 번호로 새 장소를 추가하면 기존과 같이 `CoursePlaceLookup`으로 본인의 보관함 항목을 찾아 `original_place_id`와 `place_name`을 저장한다. 기존 코스는 두 값을 그대로 사용하며, 수정할 때 유지하는 장소는 `coursePlaceId`로 찾는다. 기존 행의 스냅샷 컬럼에는 `NULL`을 유지한다.
 
-기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW COLUMNS FROM course_place;`로 아래 컬럼을 확인한다. 전부 없을 때 아래 DDL을 적용하고, 이미 존재하는 컬럼이 있다면 정의를 확인한 뒤 빠진 컬럼만 추가한다.
+기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW COLUMNS FROM saved_places;`로 `tags`(JSON, nullable) 컬럼이 있는지 확인하고 없으면 `ALTER TABLE saved_places ADD COLUMN tags JSON NULL;`을 적용한다(#90). 이어서 `SHOW COLUMNS FROM course_place;`로 아래 컬럼을 확인한다. 전부 없을 때 아래 DDL을 적용하고, 이미 존재하는 컬럼이 있다면 정의를 확인한 뒤 빠진 컬럼만 추가한다.
 
 ```sql
 ALTER TABLE course_place
