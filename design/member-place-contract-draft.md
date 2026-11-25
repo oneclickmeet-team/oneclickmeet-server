@@ -64,6 +64,20 @@ CREATE TABLE shared_places (
 ) ENGINE=InnoDB;
 ```
 
+#### 장소 메모 및 첨언 (#97)
+
+비공개 장소 메모는 기존 `memos`의 대상 유형과 ID를 사용한다. 공동 장소 첨언을 저장하려면 `comments.target_type`과 `chk_comments_archived_target`에 `SHARED_PLACE`를 허용해야 한다. 기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW CREATE TABLE comments;`로 두 정의를 확인한다. 기존 정의가 `COURSE`, `SHARED_COURSE`만 허용하면 아래 DDL을 적용한다. 기존 코스 첨언 행은 그대로 보존된다.
+
+```sql
+ALTER TABLE comments
+  DROP CHECK chk_comments_archived_target,
+  MODIFY COLUMN target_type ENUM('COURSE', 'SHARED_COURSE', 'SHARED_PLACE') NOT NULL,
+  ADD CONSTRAINT chk_comments_archived_target CHECK (
+    (target_type = 'COURSE' AND archived_at IS NOT NULL)
+    OR (target_type IN ('SHARED_COURSE', 'SHARED_PLACE') AND archived_at IS NULL)
+  );
+```
+
 ### 인증 (#68, 재원 승인 후 병합)
 
 - 소셜 로그인(카카오·구글)만 구현했다. 이메일 가입·로그인은 처음에는 제외했으나 **시연에 포함하기로 해 재원이 추가한다**(2026-11-09, §3.1, §5-5).
@@ -86,6 +100,7 @@ CREATE TABLE shared_places (
 | `GET /saved-places/{id}/nearby` | 구현(#72) |
 | `POST /saved-places/{savedPlaceId}/share` | 구현(#96). 연결 중인 본인 소유 장소를 공유하고 `sharedPlaceId`를 반환. 같은 관계에서 동일 제공처의 동일 장소를 이미 공유했으면 기존 항목과 200 |
 | `GET /couples/me/places` | 구현(#96). 두 당사자가 같은 공동 장소 목록을 조회하며, 유예 중에는 읽기 전용으로 제공. [요청과 응답](app-integration-guide.md#공동-보관함) |
+| `/memos`, `/comments`의 장소 대상 | 구현(#97). [장소 메모와 첨언](app-integration-guide.md#장소-메모와-첨언) |
 | `POST /recommendations/courses` | 구현(#66). AI 서버(R01)에 위임하도록 변경(#80): 방문 순서별 카테고리(`categorySequence`)·필수 장소 위치(`requiredPlaceOrder`) 입력, AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않음 |
 | `GET /activities`, `GET /notifications`, `PATCH /notifications/{id}/read` | 구현(#62) |
 | `POST /devices`, `POST /devices/unregister` | 구현(#74). 푸시용 기기 토큰 등록·해제. 실제 FCM 전송은 후속 |
@@ -109,7 +124,6 @@ CREATE TABLE shared_places (
 
 ### 아직 남은 것
 
-- 개인 장소(`PLACE`)·공동 장소(`SHARED_PLACE`) 비공개 메모와 공동 장소 첨언 연결(#97). `savedPlaceId`와 `sharedPlaceId`로 대상 접근 권한을 확인한다.
 - 관계 유예 종료 후 공동 장소를 각자의 개인 사본으로 이전하는 처리(#41).
 - 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
 - 이메일 회원가입·로그인(재원, 시연 전).
