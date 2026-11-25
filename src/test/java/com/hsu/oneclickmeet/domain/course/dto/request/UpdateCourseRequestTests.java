@@ -45,8 +45,8 @@ class UpdateCourseRequestTests {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"\"coursePlaceId\":null,", "\"menuId\":null,"})
-	void 신규_ID_필드의_누락은_거절한다(String field) {
+	@ValueSource(strings = {"\"coursePlaceId\":null,", "\"menuId\":null,", "\"price\":1000,"})
+	void 필수_필드의_누락은_거절한다(String field) {
 		assertThatThrownBy(() -> MAPPER.readValue(VALID_JSON.replace(field, ""), UpdateCourseRequest.class))
 			.isInstanceOf(DatabindException.class);
 	}

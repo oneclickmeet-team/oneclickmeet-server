@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -120,6 +121,31 @@ class SharedCourseUpdateIntegrationTests {
 	@AfterEach
 	void removeMemberFixtures() {
 		jdbc.update("delete from members where id in (?, ?)", owner, partner);
+	}
+
+	@Test
+	void savesUnpricedAndFreeMenusInSharedUpdates() throws Exception {
+		long firstPlaceId = coursePlaceIds.getFirst();
+		long secondPlaceId = coursePlaceIds.get(1);
+		update(partner, UUID.randomUUID(), """
+			{"menuUpserts": [
+			  {"coursePlaceId":%d,"menuId":%d,"menuName":"파스타","price":null,"selected":true},
+			  {"coursePlaceId":%d,"menuId":%d,"menuName":"샐러드","price":0,"selected":true},
+			  {"coursePlaceId":%d,"menuId":null,"menuName":"오늘의 메뉴","price":null,"selected":true}
+			]}
+			""".formatted(firstPlaceId, menuIds.get(0), firstPlaceId, menuIds.get(1), secondPlaceId))
+			.andExpect(status().isOk());
+
+		detail()
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").hasJsonPath())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").value(nullValue()))
+			.andExpect(jsonPath("$.data.places[0].menuList[1].price").value(0))
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").hasJsonPath())
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").value(nullValue()))
+			.andExpect(jsonPath("$.data.places[1].selectedSubtotal").value(0))
+			.andExpect(jsonPath("$.data.selectedTotalPrice").value(0))
+			.andExpect(jsonPath("$.data.placesWithoutSelectedMenusCount").value(1));
 	}
 
 	@Test
@@ -303,6 +329,9 @@ class SharedCourseUpdateIntegrationTests {
 			"{\"placeOrder\": []}",
 			"""
 			{"menuUpserts": [{"coursePlaceId": %d, "menuName": "음료", "price": 5000, "selected": false}]}
+			""".formatted(coursePlaceIds.getFirst()),
+			"""
+			{"menuUpserts": [{"coursePlaceId": %d, "menuId": null, "menuName": "음료", "selected": false}]}
 			""".formatted(coursePlaceIds.getFirst()),
 			"""
 			{"menuUpserts": [{"coursePlaceId": %d, "menuId": null, "menuName": "음료", "price": "5000", "selected": false}]}

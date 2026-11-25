@@ -12,7 +12,7 @@ public record CourseDetailResponse(long courseId, String courseName, List<Place>
 			String provider, String providerPlaceId, String address) {
 	}
 
-	public record Menu(long menuId, String menuName, int price, boolean selected, Instant updatedAt) {
+	public record Menu(long menuId, String menuName, Integer price, boolean selected, Instant updatedAt) {
 	}
 
 	public record Warning(String code, long coursePlaceId, int estimatedMinutes) {

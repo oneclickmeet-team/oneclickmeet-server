@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
@@ -45,6 +46,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -56,6 +58,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class SharedCourseIntegrationTests {
 
+	private static final String PERSONAL_COURSES = "/api/v1/courses";
+	private static final String PERSONAL_DETAIL = PERSONAL_COURSES + "/{courseId}";
 	private static final String SHARE = "/api/v1/courses/{courseId}/shares";
 	private static final String LIST = "/api/v1/couples/me/courses";
 	private static final String DETAIL = "/api/v1/shared-courses/{sharedCourseId}";
@@ -103,6 +107,64 @@ class SharedCourseIntegrationTests {
 	void removeMemberFixtures() {
 		// members는 테스트 스키마의 Hibernate create-drop 대상에 포함되지 않는다.
 		testMembers.forEach(memberId -> jdbc.update("delete from members where id = ?", memberId));
+	}
+
+	@Test
+	void preservesUnpricedAndFreeMenusWhenSavingEditingAndSharing() throws Exception {
+		var created = mvc.perform(post(PERSONAL_COURSES).with(member(owner)).with(csrf())
+			.header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+			.content("""
+				{"courseName":"연남 코스","places":[
+				  {"placeSnapshot":{"name":"식당","lat":37.56,"lng":126.92},"menuList":[
+				    {"menuId":null,"menuName":"오늘의 메뉴","price":null,"selected":true}]},
+				  {"placeSnapshot":{"name":"카페","lat":37.57,"lng":126.93},"menuList":[
+				    {"menuId":null,"menuName":"물","price":0,"selected":true},
+				    {"menuId":null,"menuName":"쿠키","price":1500,"selected":true},
+				    {"menuId":null,"menuName":"커피","price":4000,"selected":false}]},
+				  {"placeSnapshot":{"name":"공원","lat":37.58,"lng":126.94},"menuList":[]}
+				]}
+				"""))
+			.andExpect(status().isCreated()).andReturn().getResponse();
+		long courseId = JsonPath.parse(created.getContentAsString()).read("$.data.courseId", Long.class);
+		var initial = mvc.perform(get(PERSONAL_DETAIL, courseId).with(member(owner)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").hasJsonPath())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").value(nullValue()))
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").value(0))
+			.andExpect(jsonPath("$.data.places[0].selectedSubtotal").value(0))
+			.andExpect(jsonPath("$.data.places[1].selectedSubtotal").value(1500))
+			.andExpect(jsonPath("$.data.selectedTotalPrice").value(1500))
+			.andExpect(jsonPath("$.data.placesWithoutSelectedMenusCount").value(1))
+			.andReturn().getResponse();
+
+		var detail = JsonPath.parse(initial.getContentAsString());
+		List<Number> placeIds = detail.read("$.data.places[*].coursePlaceId");
+		long unknownMenuId = detail.read("$.data.places[0].menuList[0].menuId", Long.class);
+		long freeMenuId = detail.read("$.data.places[1].menuList[0].menuId", Long.class);
+		mvc.perform(put(PERSONAL_DETAIL, courseId).with(member(owner)).with(csrf())
+			.header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+			.content("""
+				{"courseName":"연남 코스","places":[
+				  {"coursePlaceId":%d,"menuList":[{"menuId":%d,"menuName":"오늘의 메뉴","price":0,"selected":true}]},
+				  {"coursePlaceId":%d,"menuList":[{"menuId":%d,"menuName":"물","price":null,"selected":true}]},
+				  {"coursePlaceId":%d,"menuList":[]}
+				]}
+				""".formatted(placeIds.get(0), unknownMenuId, placeIds.get(1), freeMenuId, placeIds.get(2))))
+			.andExpect(status().isOk());
+
+		mvc.perform(get(PERSONAL_DETAIL, courseId).with(member(owner)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").value(0))
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").hasJsonPath())
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").value(nullValue()));
+		long sharedId = createShare(owner, courseId, UUID.randomUUID());
+		mvc.perform(get(DETAIL, sharedId).with(member(partner)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.places[0].menuList[0].price").value(0))
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").hasJsonPath())
+			.andExpect(jsonPath("$.data.places[1].menuList[0].price").value(nullValue()))
+			.andExpect(jsonPath("$.data.selectedTotalPrice").value(0))
+			.andExpect(jsonPath("$.data.placesWithoutSelectedMenusCount").value(1));
 	}
 
 	@Test

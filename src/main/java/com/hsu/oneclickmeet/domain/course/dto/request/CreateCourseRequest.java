@@ -61,7 +61,7 @@ public record CreateCourseRequest(
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.StringValue.class)
 		@NotBlank @CodePointLength(max = 100) String menuName,
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.IntegerValue.class)
-		@NotNull @Min(0) @Max(1_000_000_000) Integer price,
+		@JsonProperty(value = "price", required = true) @Min(0) @Max(1_000_000_000) Integer price,
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.BooleanValue.class)
 		@NotNull Boolean selected
 	) {

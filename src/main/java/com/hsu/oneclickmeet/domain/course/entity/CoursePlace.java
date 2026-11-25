@@ -98,7 +98,7 @@ public class CoursePlace extends BaseEntity {
 		this.position = position;
 	}
 
-	public void appendMenu(String name, int price, boolean selected, long editorId) {
+	public void appendMenu(String name, Integer price, boolean selected, long editorId) {
 		int position = menuList.isEmpty() ? 1 : menuList.getLast().getPosition() + 1;
 		menuList.add(new CoursePlaceMenu(this, new Course.MenuInput(name, price, position, selected), editorId));
 	}
