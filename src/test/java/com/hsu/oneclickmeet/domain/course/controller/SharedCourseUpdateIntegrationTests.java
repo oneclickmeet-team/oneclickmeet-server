@@ -124,6 +124,26 @@ class SharedCourseUpdateIntegrationTests {
 	}
 
 	@Test
+	void returnsTheOriginalSharerToBothMembersAfterThePartnerEdits() throws Exception {
+		detail()
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.sharedBy.memberId").value(owner))
+			.andExpect(jsonPath("$.data.sharedBy.displayName").value("공유자"));
+
+		update(partner, UUID.randomUUID(), "{\"courseName\":\"변경된 코스\"}")
+			.andExpect(status().isOk());
+
+		for (long memberId : List.of(owner, partner)) {
+			mvc.perform(get(COURSE, sharedCourseId).with(member(memberId)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.courseName").value("변경된 코스"))
+				.andExpect(jsonPath("$.data.lastEditedBy.memberId").value(partner))
+				.andExpect(jsonPath("$.data.sharedBy.memberId").value(owner))
+				.andExpect(jsonPath("$.data.sharedBy.displayName").value("공유자"));
+		}
+	}
+
+	@Test
 	void savesUnpricedAndFreeMenusInSharedUpdates() throws Exception {
 		long firstPlaceId = coursePlaceIds.getFirst();
 		long secondPlaceId = coursePlaceIds.get(1);
