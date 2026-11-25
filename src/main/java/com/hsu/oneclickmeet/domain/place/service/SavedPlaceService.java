@@ -75,6 +75,15 @@ public class SavedPlaceService {
 				.orElseThrow(() -> new BusinessException(PlaceErrorCode.NOT_FOUND)));
 	}
 
+	public SavedPlaceResponse updateFavorite(long memberId, long savedPlaceId, boolean favorite) {
+		return transaction.execute(status -> {
+			var place = repository.findByIdAndMemberId(savedPlaceId, memberId)
+					.orElseThrow(() -> new BusinessException(PlaceErrorCode.NOT_FOUND));
+			place.changeFavorite(favorite);
+			return SavedPlaceResponse.from(place);
+		});
+	}
+
 	public void delete(long memberId, long savedPlaceId) {
 		transaction.executeWithoutResult(status -> repository.delete(
 				repository.findByIdAndMemberId(savedPlaceId, memberId)

@@ -60,7 +60,7 @@ class SavedPlaceControllerTests {
 
 	private static SavedPlaceResponse response(long id) {
 		return new SavedPlaceResponse(id, "123", "예시 카페", "서울 성북구 삼선동 1", "서울 성북구 한성로 12",
-				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123", SAVED_AT, List.of());
+				"음식점 > 카페", "CE7", 37.5822, 127.0105, "http://place.map.kakao.com/123", SAVED_AT, List.of(), false);
 	}
 
 	private static RequestPostProcessor member() {
@@ -89,7 +89,7 @@ class SavedPlaceControllerTests {
 	@DisplayName("tags를 함께 보내면 서비스에 그대로 전달하고 응답의 tags를 돌려준다")
 	void passesTagsAndReturnsThem() throws Exception {
 		SavedPlaceResponse withTags = new SavedPlaceResponse(11, "123", "예시 카페", "서울 성북구 삼선동 1", null, null, null,
-				37.5822, 127.0105, null, SAVED_AT, List.of(new ResolvedPlaceResponse.TagResponse("아늑해요", 12)));
+				37.5822, 127.0105, null, SAVED_AT, List.of(new ResolvedPlaceResponse.TagResponse("아늑해요", 12)), false);
 		when(service.save(eq(MEMBER_ID), any(SaveSavedPlaceRequest.class))).thenReturn(new SaveResult(withTags, true));
 		String body = """
 			{"providerPlaceId":"123","name":"예시 카페","address":"서울 성북구 삼선동 1","lat":37.5822,"lng":127.0105,

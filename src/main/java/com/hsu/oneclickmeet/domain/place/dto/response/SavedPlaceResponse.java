@@ -18,7 +18,8 @@ public record SavedPlaceResponse(
 		double lng,
 		String placeUrl,
 		Instant savedAt,
-		List<ResolvedPlaceResponse.TagResponse> tags) {
+		List<ResolvedPlaceResponse.TagResponse> tags,
+		boolean favorite) {
 
 	public static SavedPlaceResponse from(SavedPlace place) {
 		return new SavedPlaceResponse(
@@ -35,6 +36,7 @@ public record SavedPlaceResponse(
 				place.getCreatedAt() == null ? null : place.getCreatedAt().truncatedTo(ChronoUnit.MICROS),
 				place.getTags().stream()
 						.map(tag -> new ResolvedPlaceResponse.TagResponse(tag.label(), tag.mentionCount()))
-						.toList());
+						.toList(),
+				place.isFavorite());
 	}
 }
