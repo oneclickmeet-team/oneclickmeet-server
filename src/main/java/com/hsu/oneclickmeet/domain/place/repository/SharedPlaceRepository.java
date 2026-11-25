@@ -9,11 +9,17 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface SharedPlaceRepository extends JpaRepository<SharedPlace, Long> {
 
 	Optional<SharedPlace> findByCouple_IdAndProviderAndProviderPlaceId(
 			long coupleId, PlaceProvider provider, String providerPlaceId);
+
+	boolean existsByIdAndCouple_Id(long id, long coupleId);
+
+	@Query("select p.id from SharedPlace p where p.couple.id = :coupleId and p.id in :sharedPlaceIds")
+	Set<Long> findSharedPlaceIds(@Param("coupleId") long coupleId, @Param("sharedPlaceIds") Set<Long> sharedPlaceIds);
 
 	@Query("""
 			select p from SharedPlace p
