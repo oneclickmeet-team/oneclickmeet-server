@@ -147,7 +147,7 @@
 | `POST /api/v1/places/resolve/link`, `/image` | 구현(#64, AI 서버 내부 API v2.1 연동 #76). 이미지 인식은 읽기 제한 시간 70초(#82). AI 서버 직접 호출은 11/11에 확인(링크·이미지 인식, `extraImages` 2장 허용·5장 거부, 코스 추천). 서버 API를 거친 전체 흐름은 아직. AI를 쓸 수 없으면 링크는 단순 규칙으로 대체·이미지는 `NEEDS_SEARCH` |
 | `GET /api/v1/saved-places/{id}/nearby?category=CAFE\|RESTAURANT\|EXHIBITION\|PARK` | 구현(#72). 반경 1km, 가까운 순, 직선거리(`distanceMeters`) 포함, 기준 장소 제외 |
 | `POST /api/v1/recommendations/courses` | 구현(#66), AI 서버(R01)에 위임하도록 변경(#80). 방문 순서별 카테고리·필수 장소 입력. AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않으며 코스 저장은 재원이 스냅샷 방식으로 바꾼다 |
-| `POST /saved-places/{id}/share` | 미구현(`couple`/공유 영역과 합의 후) |
+| `POST /api/v1/saved-places/{savedPlaceId}/share`, `GET /api/v1/couples/me/places` | 구현(#96). 공동 장소 공유와 관계별 목록 조회. [앱 연동 계약](app-integration-guide.md#공동-보관함) |
 
 ## 7. 테스트
 

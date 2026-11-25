@@ -17,6 +17,7 @@
 | `members` (#68) | `id`(IDENTITY), `name`(닉네임, NOT NULL), `email`(NULL), `provider`(`KAKAO`/`GOOGLE`), `provider_user_id`, `created_at`, `updated_at`. 유니크 (`provider`, `provider_user_id`) | 컬럼 이름이 `auth_provider`가 아니라 `provider`. `password_hash` 없음(이메일 가입 제외). `course`·`couple`·`comment` 코드가 `members(id, name)`을 직접 조회하므로 `name`을 유지했고, 다른 도메인의 통합 테스트가 `id, name`만 넣기 때문에 `provider`·`provider_user_id`는 DB에서 NULL 허용(가입 코드는 항상 채움). 테스트가 정리되면 NOT NULL로 바꾼다 |
 | `refresh_tokens` (#68) | `member_id`, `token_hash`(SHA-256, 유니크), `expires_at`, `revoked_at` | 제안에 없던 테이블. 갱신 토큰 원문은 저장하지 않는다 |
 | `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `tags`(JSON, nullable, 블로그 태그 최대 5개, #89) 추가, `source_url`·`hours`는 미구현 |
+| `shared_places` (#96) | `id`(IDENTITY), `couple_id`(`couples.id` 참조), `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `tags`(JSON, NOT NULL), `shared_at`. 유니크 (`couple_id`, `provider`, `provider_place_id`), 목록 인덱스 (`couple_id`, `id`) | 관계별로 최초 공유한 장소의 스냅샷을 저장한다. `saved_places`를 참조하는 외래 키가 없으므로 개인 장소를 지워도 공동 장소의 ID와 상세 정보는 유지된다 |
 | `activities`, `notifications` (#62) | 회원별 활동 기록과 알림(읽음 시각) | 제안 범위 밖이던 영역 |
 
 #### 코스와 보관함 (§2.3)
@@ -34,6 +35,33 @@ ALTER TABLE course_place
   ADD COLUMN address VARCHAR(300) NULL,
   ADD COLUMN lat DOUBLE NULL,
   ADD COLUMN lng DOUBLE NULL;
+```
+
+#### 공동 보관함 (#96)
+
+기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW TABLES LIKE 'shared_places';`로 확인하고, 테이블이 없으면 아래 DDL로 생성한다. `couples` 테이블이 먼저 있어야 하며 기존 개인 장소의 데이터 이관은 필요 없다.
+
+```sql
+CREATE TABLE shared_places (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  couple_id BIGINT NOT NULL,
+  provider ENUM('KAKAO') NOT NULL,
+  provider_place_id VARCHAR(64) NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  address VARCHAR(300) NOT NULL,
+  road_address VARCHAR(300),
+  category VARCHAR(200),
+  category_group_code VARCHAR(10),
+  lat DOUBLE NOT NULL,
+  lng DOUBLE NOT NULL,
+  place_url VARCHAR(500),
+  tags JSON NOT NULL,
+  shared_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_shared_places_couple FOREIGN KEY (couple_id) REFERENCES couples (id),
+  CONSTRAINT uk_shared_places_couple_place UNIQUE (couple_id, provider, provider_place_id),
+  INDEX idx_shared_places_couple_id (couple_id, id)
+) ENGINE=InnoDB;
 ```
 
 ### 인증 (#68, 재원 승인 후 병합)
@@ -56,7 +84,8 @@ ALTER TABLE course_place
 | `POST /places/resolve/link`, `/places/resolve/image` | 구현(#64). AI 서버 내부 API v2.1에 맞춰 연동(#76), 이미지 인식 읽기 제한 70초(#82), 추가 캡처 `extraImages` 최대 4장(#87·#88). AI 서버 직접 호출은 11/11 확인, 서버 API를 거친 전체 흐름은 아직 |
 | `POST` · `GET` · `GET /{id}` · `DELETE /saved-places` | 구현(#60). 같은 장소 다시 저장은 409가 아니라 **기존 항목과 200**(새로 저장은 201). 목록은 커서 방식(`items`, `nextCursor`, `hasNext`) |
 | `GET /saved-places/{id}/nearby` | 구현(#72) |
-| `POST /saved-places/{id}/share` | 미구현(공유 영역과 합의 후) |
+| `POST /saved-places/{savedPlaceId}/share` | 구현(#96). 연결 중인 본인 소유 장소를 공유하고 `sharedPlaceId`를 반환. 같은 관계에서 동일 제공처의 동일 장소를 이미 공유했으면 기존 항목과 200 |
+| `GET /couples/me/places` | 구현(#96). 두 당사자가 같은 공동 장소 목록을 조회하며, 유예 중에는 읽기 전용으로 제공. [요청과 응답](app-integration-guide.md#공동-보관함) |
 | `POST /recommendations/courses` | 구현(#66). AI 서버(R01)에 위임하도록 변경(#80): 방문 순서별 카테고리(`categorySequence`)·필수 장소 위치(`requiredPlaceOrder`) 입력, AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않음 |
 | `GET /activities`, `GET /notifications`, `PATCH /notifications/{id}/read` | 구현(#62) |
 | `POST /devices`, `POST /devices/unregister` | 구현(#74). 푸시용 기기 토큰 등록·해제. 실제 FCM 전송은 후속 |
@@ -80,7 +109,8 @@ ALTER TABLE course_place
 
 ### 아직 남은 것
 
-- 공동 보관함 공유, 메모의 보관함 장소 접근 확인(`MemoTargetAccess`의 `TODO(#19)`, 재원 영역): 개인 장소(`PLACE`)와 공동 장소(`SHARED_PLACE`) 메모를 모두 연결한다. 공동 장소는 공동 보관함 대상 ID·관계별 접근 권한·공유 취소/삭제 시 메모 처리 규칙을 먼저 맞춘다.
+- 개인 장소(`PLACE`)·공동 장소(`SHARED_PLACE`) 비공개 메모와 공동 장소 첨언 연결(#97). `savedPlaceId`와 `sharedPlaceId`로 대상 접근 권한을 확인한다.
+- 관계 유예 종료 후 공동 장소를 각자의 개인 사본으로 이전하는 처리(#41).
 - 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
 - 이메일 회원가입·로그인(재원, 시연 전).
 - 업로드 한도 설정(파일당 5MB, 요청 전체 6MB, 재원 영역), 토큰 유효 시간 정책 확정. `.env.example`의 환경변수 항목은 #84에서 추가했다.
@@ -138,7 +168,7 @@ ALTER TABLE course_place
 - 유니크: (`member_id`, `provider`, `provider_place_id`) — 같은 장소 중복 저장 방지(명세서 14장 #16 미결 사항에 대한 제안).
 - 저장 시 장소 정보는 앱이 고른 후보의 값을 그대로 받는다. 값이 다른 사용자에게 퍼지지 않으므로 서버가 카카오를 다시 호출해 검증하지 않고, **형식·범위 검증만** 한다(필수값, 길이, 좌표 범위 등).
 - 메모는 `memo` 도메인(재원)에서 `saved_places`를 참조해 작성자 본인만 읽도록 한다.
-- 공동 보관함(`shared_place`)은 `couple`/`share` 쪽 이슈에서 다룬다. 이 제안 범위 밖.
+- 공동 보관함의 현재 저장 구조는 위 `shared_places` 구현 결과를 참고한다(#96).
 
 **이후 B안(`places` + `saved_places` 분리)으로 옮길 때를 대비한 약속**
 - 처음부터 `provider`, `provider_place_id`를 별도 컬럼으로 둔다(분리할 때 같은 장소를 묶는 기준이 된다).
@@ -203,9 +233,10 @@ TRD v1.0의 "장소 9개"와 대조해야 한다. 현재 제안:
 | `POST /saved-places` | 후보를 골라 개인 보관함에 저장 | 요청에 후보 필드(`providerPlaceId`, `name`, `address`, `lat`, `lng`, `category` 등)를 담는다. 형식·범위만 검증. 중복 저장은 `409` 또는 기존 항목 반환(결정 필요) |
 | `GET /saved-places` | 개인 보관함 목록(분류 필터) | 페이지네이션 방식은 이 API에서 정한다(conventions.md 미정 항목) |
 | `GET /saved-places/{savedPlaceId}` | 상세 | 운영시간은 값이 있을 때만 |
-| `DELETE /saved-places/{savedPlaceId}` | 보관함에서 삭제 | 공유된 장소는 공유 정책(재원)과 연동 |
+| `DELETE /saved-places/{savedPlaceId}` | 보관함에서 삭제 | 개인 보관함에서 삭제해도 공동 보관함에는 공유본이 남음(#96) |
 | `GET /saved-places/{savedPlaceId}/nearby` | 주변 놀거리 | 저장된 장소의 좌표로 요청 때 카테고리 검색 |
-| `POST /saved-places/{savedPlaceId}/share` | 공동 보관함에 공유 | **재원 영역(`couple`/공유)과 합의 후 별도 이슈** |
+| `POST /saved-places/{savedPlaceId}/share` | 공동 보관함에 공유 | 첫 공유 201, 기존 공동 장소가 있으면 200(#96) |
+| `GET /couples/me/places` | 현재 관계의 공동 보관함 조회 | 커서 목록으로 `sharedPlaceId`와 관계 상태 제공(#96) |
 
 성공 응답 예(저장, `201 Created`):
 
