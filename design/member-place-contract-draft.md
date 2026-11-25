@@ -37,6 +37,16 @@ ALTER TABLE course_place
   ADD COLUMN lng DOUBLE NULL;
 ```
 
+#### 코스 메뉴 금액 (#98)
+
+개인·공동 코스 메뉴가 사용하는 `course_place_item.price`에 `NULL`을 허용한다. 기존 숫자 값은 그대로 보존된다. [코스 메뉴 금액 계약](app-integration-guide.md#코스-메뉴-금액-98)을 참고한다.
+
+기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW COLUMNS FROM course_place_item LIKE 'price';`로 컬럼을 확인한다. `Null`이 `NO`인 `INT` 컬럼이면 아래 DDL을 적용한다.
+
+```sql
+ALTER TABLE course_place_item MODIFY COLUMN price INT NULL;
+```
+
 #### 공동 보관함 (#96)
 
 기존 스키마를 유지하는 MySQL 환경에서는 배포 전에 `SHOW TABLES LIKE 'shared_places';`로 확인하고, 테이블이 없으면 아래 DDL로 생성한다. `couples` 테이블이 먼저 있어야 하며 기존 개인 장소의 데이터 이관은 필요 없다.

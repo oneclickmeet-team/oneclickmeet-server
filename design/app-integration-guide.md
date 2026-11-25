@@ -178,6 +178,12 @@
 - 수정할 때 새 장소에는 `coursePlaceId: null`을 추가한다. 유지할 장소는 상세 조회에서 받은 `coursePlaceId`와 `menuList`를 보낸다. 예전 앱이 함께 보내는 숫자 `placeId`는 조회된 값과 같아야 한다. 장소 자체를 바꾸려면 기존 항목을 요청에서 빼고 새 장소로 보낸다.
 - `GET /api/v1/courses/{courseId}`의 장소 항목에는 `coursePlaceId`, `placeId`, `placeName`과 함께 `provider`, `providerPlaceId`, `address`, `latitude`, `longitude`가 온다. 스냅샷 장소는 `placeId`가 `null`이다. `providerPlaceId`가 있으면 `provider`는 `KAKAO`이고, 식별자가 없는 스냅샷은 두 필드가 `null`이다. 기존 보관함 기반 장소는 저장된 `placeId`와 `placeName`으로 조회되고, 스냅샷 필드는 `null`이다. 보관함에서 장소를 삭제한 뒤에도 `coursePlaceId`로 코스의 해당 항목을 유지하고 수정할 수 있다.
 
+### 코스 메뉴 금액 (#98)
+
+- 개인 코스 생성·수정의 `menuList`와 `PATCH /api/v1/shared-courses/{sharedCourseId}`의 `menuUpserts`에서 메뉴마다 `price` 키를 보낸다. 금액을 비웠으면 `"price": null`, 실제 0원이면 `"price": 0`을 보낸다. 금액을 입력한 경우 0~1,000,000,000원 사이의 정수를 받는다.
+- 개인·공동 코스 상세의 `menuList`는 저장한 `price`를 그대로 반환한다. 앱은 `null`일 때 ‘금액 미입력’, `0`일 때 ‘0원’을 표시한다. 예전에 앱이 미입력 금액을 `0`으로 보낸 메뉴도 기존에 저장된 값인 `0`으로 조회된다.
+- `selectedSubtotal`은 선택된 메뉴 중 금액이 입력된 항목의 합이며, `selectedTotalPrice`는 장소별 `selectedSubtotal`의 합이다. 더할 금액이 없으면 `0`이다. `placesWithoutSelectedMenusCount`는 `selected`가 `true`인 메뉴가 없는 장소만 센다.
+
 ### 활동 기록·알림·푸시
 
 | API | 상태 | 요청 | 응답 `data` |

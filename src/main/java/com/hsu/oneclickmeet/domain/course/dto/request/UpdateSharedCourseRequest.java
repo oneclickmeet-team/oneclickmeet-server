@@ -83,7 +83,7 @@ public record UpdateSharedCourseRequest(
 			@NotNull @Size(min = 1, message = "메뉴 이름을 입력해야 합니다.")
 			@CodePointLength(max = 100) String menuName,
 			@JsonDeserialize(using = IntegerValue.class)
-			@NotNull @Min(0) @Max(1_000_000_000) Integer price,
+			@JsonProperty(value = "price", required = true) @Min(0) @Max(1_000_000_000) Integer price,
 			@JsonDeserialize(using = BooleanValue.class)
 			@NotNull Boolean selected
 	) implements StrictObject {

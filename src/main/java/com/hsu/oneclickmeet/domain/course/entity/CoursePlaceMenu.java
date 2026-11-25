@@ -27,7 +27,7 @@ public class CoursePlaceMenu extends BaseEntity {
 	@Column(name = "menu_name", nullable = false)
 	private String name;
 
-	@Column(name = "price", nullable = false)
+	@Column(name = "price")
 	private Integer price;
 
     @Column(name = "menu_order", nullable = false)
@@ -61,7 +61,7 @@ public class CoursePlaceMenu extends BaseEntity {
 		this.position = input.position();
 	}
 
-	public void edit(String name, int price, boolean selected, long editorId) {
+	public void edit(String name, Integer price, boolean selected, long editorId) {
 		this.name = name;
 		this.price = price;
 		this.selected = selected;

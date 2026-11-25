@@ -65,7 +65,12 @@ public class CourseReadService {
 		List<Menu> menus = place.getMenuList().stream()
 				.map(menu -> new Menu(menu.getId(), menu.getName(), menu.getPrice(), menu.getSelected(), menu.getUpdatedAt()))
 				.toList();
-		long subtotal = menus.stream().filter(Menu::selected).mapToLong(Menu::price).sum();
+		long subtotal = menus.stream()
+				.filter(Menu::selected)
+				.map(Menu::price)
+				.filter(Objects::nonNull)
+				.mapToLong(Integer::longValue)
+				.sum();
 		var snapshot = place.getSnapshot();
 		if (snapshot == null) {
 			return new Place(place.getId(), place.getOriginalPlaceId(), place.getName(), null, null, null, menus, subtotal,

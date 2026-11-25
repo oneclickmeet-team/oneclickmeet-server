@@ -114,13 +114,14 @@ class CreateCourseRequestTests {
 	@ParameterizedTest
 	@ValueSource(strings = {
 		"{\"menuName\":\"음료\",\"price\":1000,\"selected\":true}",
+		"{\"menuId\":null,\"menuName\":\"음료\",\"selected\":true}",
 		"{\"menuId\":\"\",\"menuName\":\"음료\",\"price\":1000,\"selected\":true}",
 		"{\"menuId\":null,\"menuName\":\"음료\",\"price\":1000.5,\"selected\":true}",
 		"{\"menuId\":null,\"menuName\":\"음료\",\"price\":\"1000\",\"selected\":true}",
 		"{\"menuId\":null,\"menuName\":\"음료\",\"price\":1000,\"selected\":\"true\"}",
 		"{\"menuId\":null,\"menuName\":12,\"price\":1000,\"selected\":true}"
 	})
-	void 메뉴_ID_누락과_잘못된_JSON_타입을_거절한다(String menu) {
+	void 필수_메뉴_필드_누락과_잘못된_JSON_타입을_거절한다(String menu) {
 		assertThatThrownBy(() -> MAPPER.readValue(
 			REQUEST_JSON.formatted("\"코스\"", "1", menu), CreateCourseRequest.class))
 			.isInstanceOf(DatabindException.class);

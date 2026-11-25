@@ -16,7 +16,7 @@ public record SharedCourseDetailResponse(long sharedCourseId, long coupleId, Cou
 			Integer estimatedWalkingMinutesFromPrevious, List<Menu> menuList, long selectedSubtotal) {
 	}
 
-	public record Menu(long menuId, String menuName, int price, boolean selected, Instant updatedAt,
+	public record Menu(long menuId, String menuName, Integer price, boolean selected, Instant updatedAt,
 			PartnerResponse lastEditedBy) {
 	}
 }
