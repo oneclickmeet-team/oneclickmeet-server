@@ -5,6 +5,7 @@ import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.MenuRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
+import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
 import com.hsu.oneclickmeet.domain.course.service.CourseSaveService;
 import com.hsu.oneclickmeet.domain.course.service.CourseShareService;
 import com.jayway.jsonpath.DocumentContext;
@@ -28,6 +29,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,7 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "oneclickmeet.couple.grace-expiration-delay-ms=3600000")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
@@ -75,6 +77,8 @@ class SharedCourseCancellationIntegrationTests {
 	@Autowired
 	private CourseShareService courseShare;
 	@Autowired
+	private SharedCourseRepository sharedCourses;
+	@Autowired
 	private CoupleRepository couples;
 	@MockitoBean(name = "coupleClock")
 	private Clock clock;
@@ -96,16 +100,43 @@ class SharedCourseCancellationIntegrationTests {
 		jdbc.update("insert into members (id, name) values (?, '공유자'), (?, '상대방'), (?, '관계 밖 회원')",
 			owner, partner, outsider);
 		coupleId = couples.save(Couple.connect(owner, partner, NOW)).getId();
-		var request = new CreateCourseRequest("원본 코스", List.of(
-			new PlaceRequest(501L, List.of(new MenuRequest(null, "파스타", 25_000, true))),
-			new PlaceRequest(502L, List.of()), new PlaceRequest(503L, List.of())));
-		sourceCourseId = courseSave.save(owner, UUID.randomUUID(), request, (memberId, placeId) -> Optional.of("장소 " + placeId));
+		sourceCourseId = savePersonalCourse(owner);
 		sharedCourseId = courseShare.share(owner, sourceCourseId, UUID.randomUUID()).sharedCourseId();
 	}
 
 	@AfterEach
 	void removeMemberFixtures() {
 		jdbc.update("delete from members where id in (?, ?, ?)", owner, partner, outsider);
+	}
+
+	@Test
+	void personalDetailTracksSharingAndCancellationForEachCourse() throws Exception {
+		long courseId = savePersonalCourse(owner);
+		assertShareStatus(owner, courseId, false);
+		assertShareStatus(outsider, savePersonalCourse(outsider), false);
+
+		var shared = mvc.perform(post(PERSONAL_COURSE + "/shares", courseId).with(member(owner)).with(csrf())
+			.header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isCreated());
+		long newSharedCourseId = json(shared).read("$.data.sharedCourseId", Long.class);
+		assertShareStatus(owner, courseId, true);
+		mvc.perform(get(SHARED_COURSE, newSharedCourseId).with(member(owner))).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.isShared").doesNotHaveJsonPath());
+
+		mvc.perform(delete(SHARED_COURSE, newSharedCourseId).with(member(partner)).with(csrf()))
+			.andExpect(status().isNoContent());
+		assertShareStatus(owner, courseId, false);
+		assertShareStatus(owner, sourceCourseId, true);
+	}
+
+	@Test
+	void personalDetailTracksSharingUntilTheGraceDeadline() throws Exception {
+		Instant deadline = disconnect();
+		given(clock.instant()).willReturn(deadline.minus(1, ChronoUnit.MICROS));
+		assertShareStatus(owner, sourceCourseId, true);
+
+		given(clock.instant()).willReturn(deadline);
+		assertShareStatus(owner, sourceCourseId, false);
+		assertThat(sharedCourses.existsById(sharedCourseId)).isTrue();
 	}
 
 	@Test
@@ -223,6 +254,13 @@ class SharedCourseCancellationIntegrationTests {
 		mvc.perform(get(COURSES).with(member(partner))).andExpect(jsonPath("$.data.items").isEmpty());
 	}
 
+	private long savePersonalCourse(long memberId) {
+		var request = new CreateCourseRequest("원본 코스", List.of(
+			new PlaceRequest(501L, List.of(new MenuRequest(null, "파스타", 25_000, true))),
+			new PlaceRequest(502L, List.of()), new PlaceRequest(503L, List.of())));
+		return courseSave.save(memberId, UUID.randomUUID(), request, (ownerId, placeId) -> Optional.of("장소 " + placeId));
+	}
+
 	private ResultActions cancel(long memberId) throws Exception {
 		return mvc.perform(delete(SHARED_COURSE, sharedCourseId).with(member(memberId)).with(csrf()));
 	}
@@ -232,9 +270,10 @@ class SharedCourseCancellationIntegrationTests {
 			.header("Idempotency-Key", key.toString()).contentType(MediaType.APPLICATION_JSON).content(body));
 	}
 
-	private void disconnect() throws Exception {
-		mvc.perform(post("/api/v1/couples/{coupleId}/disconnections", coupleId).with(member(owner)).with(csrf())
+	private Instant disconnect() throws Exception {
+		var result = mvc.perform(post("/api/v1/couples/{coupleId}/disconnections", coupleId).with(member(owner)).with(csrf())
 			.header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isOk());
+		return Instant.parse(json(result).read("$.data.graceEndsAt", String.class));
 	}
 
 	private long personalCopyId(long memberId, int expectedCount) throws Exception {
@@ -249,9 +288,15 @@ class SharedCourseCancellationIntegrationTests {
 		return mvc.perform(get(PERSONAL_COURSE, courseId).with(member(memberId)));
 	}
 
+	private void assertShareStatus(long memberId, long courseId, boolean expected) throws Exception {
+		personalDetail(memberId, courseId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.isShared").value(expected));
+	}
+
 	private DocumentContext assertLatestCourse(long memberId, long courseId) throws Exception {
 		return json(personalDetail(memberId, courseId).andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.courseName").value("공동 수정 코스"))
+			.andExpect(jsonPath("$.data.isShared").value(false))
 			.andExpect(jsonPath("$.data.places[*].placeId").value(contains(502, 501, 503)))
 			.andExpect(jsonPath("$.data.places[1].menuList[0].menuName").value("리조또"))
 			.andExpect(jsonPath("$.data.places[1].menuList[0].price").value(18_000))
