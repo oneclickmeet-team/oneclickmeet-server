@@ -32,6 +32,10 @@ public interface MemoRepository extends JpaRepository<Memo, Long> {
 	boolean existsByAuthorIdAndTargetTypeAndTargetId(long authorId, MemoTargetType targetType, long targetId);
 
 	@Modifying
+	@Query("delete from Memo memo where memo.targetType = :type and memo.targetId = :id")
+	void deleteForTarget(@Param("type") MemoTargetType type, @Param("id") long id);
+
+	@Modifying
 	@Query("""
 			update Memo memo set memo.targetType = :copyType, memo.targetId = :copyId
 			where memo.authorId = :authorId and memo.targetType = :sourceType and memo.targetId = :sourceId

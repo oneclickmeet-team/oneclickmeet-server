@@ -109,6 +109,7 @@ ALTER TABLE comments
 | `POST` · `GET` · `GET /{id}` · `DELETE /saved-places` | 구현(#60). 같은 장소 다시 저장은 409가 아니라 **기존 항목과 200**(새로 저장은 201). 목록은 커서 방식(`items`, `nextCursor`, `hasNext`) |
 | `GET /saved-places/{id}/nearby` | 구현(#72) |
 | `POST /saved-places/{savedPlaceId}/share` | 구현(#96). 연결 중인 본인 소유 장소를 공유하고 `sharedPlaceId`를 반환. 같은 관계에서 동일 제공처의 동일 장소를 이미 공유했으면 기존 항목과 200 |
+| `DELETE /couples/me/places/{sharedPlaceId}` | 연결 중인 두 사람 모두 삭제 가능. 공동 장소의 비공개 메모와 첨언도 삭제하며 개인 장소는 유지한다. 유예 중에는 읽기 전용 |
 | `GET /couples/me/places` | 구현(#96). 두 당사자가 같은 공동 장소 목록을 조회하며, 유예 중에는 읽기 전용으로 제공. [요청과 응답](app-integration-guide.md#공동-보관함) |
 | `/memos`, `/comments`의 장소 대상 | 구현(#97). [장소 메모와 첨언](app-integration-guide.md#장소-메모와-첨언) |
 | `POST /recommendations/courses` | 구현(#66). AI 서버(R01)에 위임하도록 변경(#80): 방문 순서별 카테고리(`categorySequence`)·필수 장소 위치(`requiredPlaceOrder`) 입력, AI 서버를 쓸 수 없으면 502. 결과는 저장하지 않음 |
@@ -260,6 +261,7 @@ TRD v1.0의 "장소 9개"와 대조해야 한다. 현재 제안:
 | `DELETE /saved-places/{savedPlaceId}` | 보관함에서 삭제 | 개인 보관함에서 삭제해도 공동 보관함에는 공유본이 남음(#96) |
 | `GET /saved-places/{savedPlaceId}/nearby` | 주변 놀거리 | 저장된 장소의 좌표로 요청 때 카테고리 검색 |
 | `POST /saved-places/{savedPlaceId}/share` | 공동 보관함에 공유 | 첫 공유 201, 기존 공동 장소가 있으면 200(#96) |
+| `DELETE /couples/me/places/{sharedPlaceId}` | 연결 중인 두 사람 모두 삭제 가능. 공동 장소의 비공개 메모와 첨언도 삭제하며 개인 장소는 유지한다. 유예 중에는 읽기 전용 |
 | `GET /couples/me/places` | 현재 관계의 공동 보관함 조회 | 커서 목록으로 `sharedPlaceId`와 관계 상태 제공(#96) |
 
 성공 응답 예(저장, `201 Created`):

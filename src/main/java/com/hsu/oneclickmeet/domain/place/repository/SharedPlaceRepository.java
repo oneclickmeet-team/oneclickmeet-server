@@ -16,6 +16,8 @@ public interface SharedPlaceRepository extends JpaRepository<SharedPlace, Long> 
 	Optional<SharedPlace> findByCouple_IdAndProviderAndProviderPlaceId(
 			long coupleId, PlaceProvider provider, String providerPlaceId);
 
+	Optional<SharedPlace> findByIdAndCouple_Id(long id, long coupleId);
+
 	boolean existsByIdAndCouple_Id(long id, long coupleId);
 
 	@Query("select p.id from SharedPlace p where p.couple.id = :coupleId and p.id in :sharedPlaceIds")

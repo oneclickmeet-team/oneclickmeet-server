@@ -110,6 +110,7 @@
 
 | API | 요청 | 응답 `data` |
 |---|---|---|
+| `DELETE /couples/me/places/{sharedPlaceId}` | 공동 장소 ID, 요청 본문 없음 | 204. 연결 중인 두 사람 중 누구나 삭제 가능 |
 | `POST /saved-places/{savedPlaceId}/share` | 내 개인 보관함의 `savedPlaceId`. 요청 본문 없음 | 첫 공유는 201, 같은 관계에서 이미 공유한 장소는 200. 공동 장소 항목 한 건 |
 | `GET /couples/me/places` | 선택 `cursor`, `size`(기본 20, 1~100) | 200. `{ coupleId, relationshipStatus, readOnly, graceEndsAt, items, nextCursor, hasNext }` |
 
@@ -117,7 +118,7 @@
 - 같은 관계의 두 사람이 동일한 카카오 장소를 각자 저장한 뒤 공유해도, 먼저 공유한 항목의 `sharedPlaceId`와 장소 정보를 돌려준다. 공유된 장소는 공유 당시의 정보를 보관하므로 내 개인 보관함에서 삭제해도 공동 목록에 남는다.
 - `items`는 `sharedPlaceId`가 큰 순서로 내려간다. 다음 요청에는 받은 `nextCursor`를 그대로 넣고, `hasNext`가 `false`이면 조회를 마친다. 관계가 바뀌면 커서 없이 다시 조회한다.
 - `relationshipStatus`가 `CONNECTED`이면 `readOnly`는 `false`, `graceEndsAt`은 `null`이다. 유예 중에는 두 사람 모두 `GRACE`, `readOnly: true`, `graceEndsAt`을 받는다. 유예 중 새로 공유하려 하면 `COUPLE-0409-01`이다. 현재 관계가 없으면 두 API 모두 `COUPLE-0409-02`로 응답한다. 공유 요청에서 개인 장소가 없거나 본인 소유가 아니면 관계 상태 확인 전에 `PLACE-0404`를 반환한다.
-- 공동 장소의 메모와 첨언에는 이 응답의 `sharedPlaceId`를 사용한다.
+- 공동 장소의 메모와 첨언에는 이 응답의 `sharedPlaceId`를 사용한다. 공동 장소를 빼면 두 사람의 비공개 메모와 공동 첨언도 함께 삭제되며 복구할 수 없다. 개인 보관함 장소는 남는다. 관계 유예 중에는 뺄 수 없다.
 
 ### 장소 메모와 첨언
 
