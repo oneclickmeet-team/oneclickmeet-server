@@ -69,15 +69,17 @@ public class SharedCourseReadService {
 		var shared = sharedCourses.findByIdAndCoupleId(sharedCourseId, couple.getId())
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
 		var course = CourseReadService.toDetail(shared.getCourse());
-		Map<Long, PartnerResponse> editors = new HashMap<>();
-		LongFunction<PartnerResponse> editorFor = id -> editors.computeIfAbsent(id,
+		Map<Long, PartnerResponse> memberResponses = new HashMap<>();
+		LongFunction<PartnerResponse> memberFor = id -> memberResponses.computeIfAbsent(id,
 				member -> new PartnerResponse(member, members.findDisplayName(member).orElse(null)));
-		var editor = editorFor.apply(Objects.requireNonNullElse(shared.getLastEditedByMemberId(), shared.getSharedByMemberId()));
+		long sharerId = shared.getSharedByMemberId();
+		var sharer = memberFor.apply(sharerId);
+		var editor = memberFor.apply(Objects.requireNonNullElse(shared.getLastEditedByMemberId(), sharerId));
 		var menuEditors = menuEditors(shared);
-		var places = course.places().stream().map(place -> toSharedPlace(place, menuEditors, editorFor)).toList();
+		var places = course.places().stream().map(place -> toSharedPlace(place, menuEditors, memberFor)).toList();
 		boolean readOnly = couple.getStatus() == CoupleStatus.GRACE;
 		return new SharedCourseDetailResponse(shared.getId(), couple.getId(), couple.getStatus(), readOnly,
-				readOnly ? couple.getGraceEndsAt() : null, shared.getStructureVersion(), editor,
+				readOnly ? couple.getGraceEndsAt() : null, shared.getStructureVersion(), sharer, editor,
 				course.courseName(), places, course.selectedTotalPrice(), course.placesWithoutSelectedMenusCount(),
 				course.walkingTimeSource(), course.warnings(), course.createdAt(),
 				shared.getLastEditedAt() == null ? course.updatedAt() : shared.getLastEditedAt());
