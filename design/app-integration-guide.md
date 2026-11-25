@@ -31,6 +31,8 @@
 | `MEMBER-0502` | 502 | 소셜 로그인 제공자를 잠시 쓸 수 없음 | "잠시 후 다시" 안내 |
 | `PLACE-0404` | 404 | 보관함 장소 없음(남의 장소 포함) | 목록을 새로 고침 |
 | `PLACE-0502` | 502 | 카카오 장소 검색 실패 | "잠시 후 다시" 안내 |
+| `COUPLE-0409-01` | 409 | 관계 유예 중 공동 장소 공유 요청 | 공동 보관함을 읽기 전용으로 표시 |
+| `COUPLE-0409-02` | 409 | 장소를 공유하거나 공동 보관함을 조회할 수 있는 현재 관계 없음 | 관계 상태를 새로 고침하고 연결 안내 |
 | `RECOMMENDATION-0400` | 400 | 기준 장소와 지역을 둘 다 보냈거나 둘 다 안 보냄 | 입력 흐름 점검 |
 | `RECOMMENDATION-0401` | 400 | 지원하지 않는 지역 | 버튼으로 판단할 수 있는 6곳만 보여 주기 |
 | `RECOMMENDATION-0502` | 502 | AI 추천 서버를 쓸 수 없음(다른 방식으로 대신하지 않는다) | "잠시 후 다시" 안내 |
@@ -103,7 +105,19 @@
 | `GET /saved-places/{id}` | 구현 | — | 위 항목 1건 |
 | `DELETE /saved-places/{id}` | 구현 | — | 204 |
 | `GET /saved-places/{id}/nearby` | 구현 | `category`=`CAFE`\|`RESTAURANT`\|`EXHIBITION`\|`PARK`(기본 `CAFE`) | `{ savedPlaceId, category, items: [{ place: {후보 필드}, distanceMeters }] }`. 저장된 장소 기준 반경 1km, 가까운 순 |
-| `POST /saved-places/{id}/share` | **미구현** | — | 공동 보관함 공유(커플 영역과 합의 후) |
+
+### 공동 보관함
+
+| API | 요청 | 응답 `data` |
+|---|---|---|
+| `POST /saved-places/{savedPlaceId}/share` | 내 개인 보관함의 `savedPlaceId`. 요청 본문 없음 | 첫 공유는 201, 같은 관계에서 이미 공유한 장소는 200. 공동 장소 항목 한 건 |
+| `GET /couples/me/places` | 선택 `cursor`, `size`(기본 20, 1~100) | 200. `{ coupleId, relationshipStatus, readOnly, graceEndsAt, items, nextCursor, hasNext }` |
+
+- 공동 장소 항목의 필드는 `sharedPlaceId`, `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`, `tags`, `sharedAt`이다. `sharedAt`은 UTC ISO 8601 형식이고, 태그가 없으면 `tags`는 `[]`이다.
+- 같은 관계의 두 사람이 동일한 카카오 장소를 각자 저장한 뒤 공유해도, 먼저 공유한 항목의 `sharedPlaceId`와 장소 정보를 돌려준다. 공유된 장소는 공유 당시의 정보를 보관하므로 내 개인 보관함에서 삭제해도 공동 목록에 남는다.
+- `items`는 `sharedPlaceId`가 큰 순서로 내려간다. 다음 요청에는 받은 `nextCursor`를 그대로 넣고, `hasNext`가 `false`이면 조회를 마친다. 관계가 바뀌면 커서 없이 다시 조회한다.
+- `relationshipStatus`가 `CONNECTED`이면 `readOnly`는 `false`, `graceEndsAt`은 `null`이다. 유예 중에는 두 사람 모두 `GRACE`, `readOnly: true`, `graceEndsAt`을 받는다. 유예 중 새로 공유하려 하면 `COUPLE-0409-01`이다. 현재 관계가 없으면 두 API 모두 `COUPLE-0409-02`로 응답한다. 공유 요청에서 개인 장소가 없거나 본인 소유가 아니면 관계 상태 확인 전에 `PLACE-0404`를 반환한다.
+- 공동 장소의 메모·첨언 연결에서 사용할 대상 ID는 `sharedPlaceId`다. 연동은 #97에서 추가한다.
 
 ### 코스 추천
 
