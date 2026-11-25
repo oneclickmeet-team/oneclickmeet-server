@@ -184,6 +184,11 @@
 - 개인·공동 코스 상세의 `menuList`는 저장한 `price`를 그대로 반환한다. 앱은 `null`일 때 ‘금액 미입력’, `0`일 때 ‘0원’을 표시한다. 예전에 앱이 미입력 금액을 `0`으로 보낸 메뉴도 기존에 저장된 값인 `0`으로 조회된다.
 - `selectedSubtotal`은 선택된 메뉴 중 금액이 입력된 항목의 합이며, `selectedTotalPrice`는 장소별 `selectedSubtotal`의 합이다. 더할 금액이 없으면 `0`이다. `placesWithoutSelectedMenusCount`는 `selected`가 `true`인 메뉴가 없는 장소만 센다.
 
+### 공동 코스 최초 공유자 (#99)
+
+- `GET /api/v1/shared-courses/{sharedCourseId}`의 `data.sharedBy`는 최초 공유자의 `memberId`와 현재 `displayName`을 반환한다. 상대가 코스를 수정해도 최초 공유자의 ID는 유지되며 `lastEditedBy`에 최근 수정자가 표시된다.
+- `sharedBy.memberId`가 현재 로그인한 회원 ID와 같으면 ‘내가 공유한 코스’, 다르면 `sharedBy.displayName`으로 ‘○○가 공유한 코스’를 표시할 수 있다. 표시명을 조회할 수 없으면 `displayName`은 `null`이다.
+
 ### 활동 기록·알림·푸시
 
 | API | 상태 | 요청 | 응답 `data` |
