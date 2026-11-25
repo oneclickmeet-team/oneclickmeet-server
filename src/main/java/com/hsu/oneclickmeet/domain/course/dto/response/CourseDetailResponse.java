@@ -5,7 +5,7 @@ import java.util.List;
 
 public record CourseDetailResponse(long courseId, String courseName, List<Place> places, long selectedTotalPrice,
 		long placesWithoutSelectedMenusCount, String walkingTimeSource, List<Warning> warnings,
-		Instant createdAt, Instant updatedAt) {
+		Instant createdAt, Instant updatedAt, boolean isShared) {
 
 	public record Place(long coursePlaceId, Long placeId, String placeName, Double latitude, Double longitude,
 			Integer estimatedWalkingMinutesFromPrevious, List<Menu> menuList, long selectedSubtotal,

@@ -249,12 +249,13 @@ class CourseControllerTests {
 		var place = new CourseDetailResponse.Place(21L, 51L, "식당", null, null, null, List.of(menu), 24_000,
 			null, null, null);
 		when(courseReadService.detail(MEMBER_ID, COURSE_ID)).thenReturn(new CourseDetailResponse(
-			COURSE_ID, "산책 코스", List.of(place), 24_000, 0, null, List.of(), CREATED_AT, CREATED_AT));
+			COURSE_ID, "산책 코스", List.of(place), 24_000, 0, null, List.of(), CREATED_AT, CREATED_AT, true));
 
 		mvc.perform(get(COURSES_URL + "/{courseId}", COURSE_ID).param("memberId", "999").with(member(MEMBER_ID)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.courseId").value(COURSE_ID))
+			.andExpect(jsonPath("$.data.isShared").value(true))
 			.andExpect(jsonPath("$.data.places[0].coursePlaceId").value(21))
 			.andExpect(jsonPath("$.data.places[0].placeId").value(51))
 			.andExpect(jsonPath("$.data.places[0].placeName").value("식당"))
