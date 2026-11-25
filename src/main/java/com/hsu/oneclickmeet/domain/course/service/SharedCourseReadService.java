@@ -68,7 +68,7 @@ public class SharedCourseReadService {
 		Couple couple = requireCurrentCouple(memberId, CourseErrorCode.NOT_FOUND);
 		var shared = sharedCourses.findByIdAndCoupleId(sharedCourseId, couple.getId())
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
-		var course = CourseReadService.toDetail(shared.getCourse());
+		var course = CourseReadService.toDetail(shared.getCourse(), true);
 		Map<Long, PartnerResponse> editors = new HashMap<>();
 		LongFunction<PartnerResponse> editorFor = id -> editors.computeIfAbsent(id,
 				member -> new PartnerResponse(member, members.findDisplayName(member).orElse(null)));
