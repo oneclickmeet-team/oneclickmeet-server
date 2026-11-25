@@ -22,7 +22,7 @@ import java.time.Instant;
 		columnList = "target_type, target_id, created_at, id"),
 		check = @CheckConstraint(name = "chk_comments_archived_target",
 				constraint = "(target_type = 'COURSE' AND archived_at IS NOT NULL)"
-						+ " OR (target_type = 'SHARED_COURSE' AND archived_at IS NULL)"))
+						+ " OR (target_type IN ('SHARED_COURSE', 'SHARED_PLACE') AND archived_at IS NULL)"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Comment {
 
@@ -52,9 +52,12 @@ public class Comment {
 	@Column(updatable = false)
 	private Instant archivedAt;
 
-	public Comment(long sharedCourseId, long authorMemberId, String content, Instant now) {
-		this.targetType = CommentTargetType.SHARED_COURSE;
-		this.targetId = sharedCourseId;
+	public Comment(CommentTargetType targetType, long targetId, long authorMemberId, String content, Instant now) {
+		if (targetType != CommentTargetType.SHARED_COURSE && targetType != CommentTargetType.SHARED_PLACE) {
+			throw new IllegalArgumentException("새 첨언의 대상은 공동 코스 또는 공동 장소여야 합니다.");
+		}
+		this.targetType = targetType;
+		this.targetId = targetId;
 		this.authorMemberId = authorMemberId;
 		this.content = content;
 		this.createdAt = now;

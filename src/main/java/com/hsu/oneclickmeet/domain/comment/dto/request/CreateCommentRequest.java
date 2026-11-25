@@ -9,7 +9,8 @@ import tools.jackson.databind.annotation.JsonDeserialize;
 
 public record CreateCommentRequest(
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.StringValue.class)
-		@NotNull @Pattern(regexp = "SHARED_COURSE", message = "targetType은 SHARED_COURSE여야 합니다.") String targetType,
+		@NotNull @Pattern(regexp = "SHARED_COURSE|SHARED_PLACE",
+				message = "targetType은 SHARED_COURSE 또는 SHARED_PLACE여야 합니다.") String targetType,
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.LongValue.class)
 		@NotNull @Positive Long targetId,
 		@JsonDeserialize(using = CourseRequestScalarDeserializers.StringValue.class)
