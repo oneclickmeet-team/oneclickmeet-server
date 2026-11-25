@@ -25,7 +25,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 			select course.id as courseId, course.name as courseName,
 			       size(course.places) as placeCount, course.createdAt as createdAt,
 			       (select copy.sharedCourseId from SharedCourseCancellationCopy copy where copy.courseId = course.id)
-			           as originSharedCourseId
+			           as originSharedCourseId,
+			       exists (select 1 from SharedCourse sharedCourse
+			               where sharedCourse.couple.id = :coupleId and sharedCourse.sourceCourseId = course.id) as shared
 			from Course course
 			where exists (
 				select 1 from CourseLibrary library where library.course = course and library.memberId = :memberId
@@ -34,7 +36,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 				or (course.createdAt = :beforeCreatedAt and course.id < :beforeId))
 			order by course.createdAt desc, course.id desc
 			""")
-	List<Summary> findOwnedSummaries(@Param("memberId") long memberId,
+	List<Summary> findOwnedSummaries(@Param("memberId") long memberId, @Param("coupleId") Long coupleId,
 			@Param("beforeCreatedAt") Instant beforeCreatedAt, @Param("beforeId") Long beforeId, Pageable limit);
 
 	@Query("""
@@ -64,5 +66,6 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 		int getPlaceCount();
 		Long getOriginSharedCourseId();
 		Instant getCreatedAt();
+		boolean isShared();
 	}
 }

@@ -1,5 +1,6 @@
 package com.hsu.oneclickmeet.domain.course.service;
 
+import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseDetailResponse;
 import com.hsu.oneclickmeet.domain.course.dto.response.CourseDetailResponse.Menu;
@@ -21,6 +22,7 @@ import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -43,13 +45,15 @@ public class CourseReadService {
 
 	public CourseListResponse list(long memberId, String cursor, int size) {
 		CourseCursor before = CourseCursor.decode(cursor, memberId, size);
-		var summaries = courseRepository.findOwnedSummaries(memberId, before == null ? null : before.createdAt(),
-				before == null ? null : before.courseId(), PageRequest.of(0, size + 1));
+		Long coupleId = findCurrentCoupleId(memberId).orElse(null);
+		var summaries = courseRepository.findOwnedSummaries(memberId, coupleId,
+				before == null ? null : before.createdAt(), before == null ? null : before.courseId(),
+				PageRequest.of(0, size + 1));
 		boolean hasNext = summaries.size() > size;
 		var items = summaries.stream().limit(size)
 				.map(summary -> new CourseListResponse.Item(summary.getCourseId(), summary.getCourseName(),
 						summary.getPlaceCount(), summary.getOriginSharedCourseId(),
-						Objects.requireNonNull(summary.getCreatedAt(), "Course has no creation timestamp")))
+						Objects.requireNonNull(summary.getCreatedAt(), "Course has no creation timestamp"), summary.isShared()))
 				.toList();
 		String nextCursor = null;
 		if (hasNext) {
@@ -62,10 +66,14 @@ public class CourseReadService {
 	public CourseDetailResponse detail(long memberId, long courseId) {
 		Course course = courseRepository.findOwnedCourse(memberId, courseId)
 				.orElseThrow(() -> new BusinessException(CourseErrorCode.NOT_FOUND));
-		boolean isShared = couples.findCurrent(memberId, clock.instant().truncatedTo(ChronoUnit.MICROS))
-				.map(couple -> sharedCourses.existsByCoupleIdAndSourceCourseId(couple.getId(), courseId))
+		boolean isShared = findCurrentCoupleId(memberId)
+				.map(coupleId -> sharedCourses.existsByCoupleIdAndSourceCourseId(coupleId, courseId))
 				.orElse(false);
 		return toDetail(course, isShared);
+	}
+
+	private Optional<Long> findCurrentCoupleId(long memberId) {
+		return couples.findCurrent(memberId, clock.instant().truncatedTo(ChronoUnit.MICROS)).map(Couple::getId);
 	}
 
 	static CourseDetailResponse toDetail(Course course, boolean isShared) {

@@ -24,6 +24,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Clock;
@@ -110,15 +111,21 @@ class SharedCourseCancellationIntegrationTests {
 	}
 
 	@Test
-	void personalDetailTracksSharingAndCancellationForEachCourse() throws Exception {
+	void personalReadsTrackSharingAndCancellationForEachCourse() throws Exception {
 		long courseId = savePersonalCourse(owner);
+		long outsiderCourseId = savePersonalCourse(outsider);
 		assertShareStatus(owner, courseId, false);
-		assertShareStatus(outsider, savePersonalCourse(outsider), false);
+		assertShareStatus(outsider, outsiderCourseId, false);
+		personalList(owner)
+			.andExpect(listedShareStatus(sourceCourseId, true))
+			.andExpect(listedShareStatus(courseId, false));
+		personalList(outsider).andExpect(listedShareStatus(outsiderCourseId, false));
 
 		var shared = mvc.perform(post(PERSONAL_COURSE + "/shares", courseId).with(member(owner)).with(csrf())
 			.header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isCreated());
 		long newSharedCourseId = json(shared).read("$.data.sharedCourseId", Long.class);
 		assertShareStatus(owner, courseId, true);
+		personalList(owner).andExpect(listedShareStatus(courseId, true));
 		mvc.perform(get(SHARED_COURSE, newSharedCourseId).with(member(owner))).andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.isShared").doesNotHaveJsonPath());
 
@@ -126,16 +133,23 @@ class SharedCourseCancellationIntegrationTests {
 			.andExpect(status().isNoContent());
 		assertShareStatus(owner, courseId, false);
 		assertShareStatus(owner, sourceCourseId, true);
+		personalList(owner)
+			.andExpect(listedShareStatus(courseId, false))
+			.andExpect(listedShareStatus(sourceCourseId, true))
+			.andExpect(jsonPath("$.data.items[?(@.originSharedCourseId == %d)].isShared", newSharedCourseId)
+				.value(contains(false)));
 	}
 
 	@Test
-	void personalDetailTracksSharingUntilTheGraceDeadline() throws Exception {
+	void personalReadsTrackSharingUntilTheGraceDeadline() throws Exception {
 		Instant deadline = disconnect();
 		given(clock.instant()).willReturn(deadline.minus(1, ChronoUnit.MICROS));
 		assertShareStatus(owner, sourceCourseId, true);
+		personalList(owner).andExpect(listedShareStatus(sourceCourseId, true));
 
 		given(clock.instant()).willReturn(deadline);
 		assertShareStatus(owner, sourceCourseId, false);
+		personalList(owner).andExpect(listedShareStatus(sourceCourseId, false));
 		assertThat(sharedCourses.existsById(sharedCourseId)).isTrue();
 	}
 
@@ -277,11 +291,19 @@ class SharedCourseCancellationIntegrationTests {
 	}
 
 	private long personalCopyId(long memberId, int expectedCount) throws Exception {
-		var result = mvc.perform(get(COURSES).with(member(memberId))).andExpect(status().isOk())
+		var result = personalList(memberId)
 			.andExpect(jsonPath("$.data.items.length()").value(expectedCount));
 		List<Long> copies = ids(json(result), "$.data.items[?(@.originSharedCourseId == " + sharedCourseId + ")].courseId");
 		assertThat(copies).hasSize(1);
 		return copies.getFirst();
+	}
+
+	private ResultActions personalList(long memberId) throws Exception {
+		return mvc.perform(get(COURSES).with(member(memberId))).andExpect(status().isOk());
+	}
+
+	private static ResultMatcher listedShareStatus(long courseId, boolean expected) {
+		return jsonPath("$.data.items[?(@.courseId == %d)].isShared", courseId).value(contains(expected));
 	}
 
 	private ResultActions personalDetail(long memberId, long courseId) throws Exception {

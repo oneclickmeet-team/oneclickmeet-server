@@ -215,7 +215,7 @@ class CourseControllerTests {
 	@ParameterizedTest
 	@ValueSource(ints = {1, 100})
 	void 목록_조회에_커서와_페이지_크기를_전달한다(int size) throws Exception {
-		var item = new CourseListResponse.Item(COURSE_ID, "산책 코스", 3, null, CREATED_AT);
+		var item = new CourseListResponse.Item(COURSE_ID, "산책 코스", 3, null, CREATED_AT, true);
 		when(courseReadService.list(MEMBER_ID, "previous-cursor", size))
 			.thenReturn(new CourseListResponse(List.of(item), "next-cursor", true));
 
@@ -227,6 +227,7 @@ class CourseControllerTests {
 			.andExpect(jsonPath("$.data.items[0].placeCount").value(3))
 			.andExpect(jsonPath("$.data.items[0].originSharedCourseId").value(nullValue()))
 			.andExpect(jsonPath("$.data.items[0].createdAt").value(CREATED_AT.toString()))
+			.andExpect(jsonPath("$.data.items[0].isShared").value(true))
 			.andExpect(jsonPath("$.data.nextCursor").value("next-cursor"))
 			.andExpect(jsonPath("$.data.hasNext").value(true));
 	}
