@@ -77,11 +77,15 @@ public class SharedPlace {
 	@Column(nullable = false, columnDefinition = "json")
 	private List<SavedPlaceTag> tags;
 
+	@Column(updatable = false)
+	private Long sharedByMemberId;
+
 	@Column(nullable = false, updatable = false)
 	private Instant sharedAt;
 
-	private SharedPlace(Couple couple, SavedPlace source, Instant sharedAt) {
+	private SharedPlace(Couple couple, SavedPlace source, long memberId, Instant sharedAt) {
 		this.couple = couple;
+		this.sharedByMemberId = memberId;
 		this.provider = source.getProvider();
 		this.providerPlaceId = source.getProviderPlaceId();
 		this.name = source.getName();
@@ -96,7 +100,7 @@ public class SharedPlace {
 		this.sharedAt = sharedAt;
 	}
 
-	public static SharedPlace copyFrom(Couple couple, SavedPlace source, Instant sharedAt) {
-		return new SharedPlace(couple, source, sharedAt);
+	public static SharedPlace copyFrom(Couple couple, SavedPlace source, long memberId, Instant sharedAt) {
+		return new SharedPlace(couple, source, memberId, sharedAt);
 	}
 }
