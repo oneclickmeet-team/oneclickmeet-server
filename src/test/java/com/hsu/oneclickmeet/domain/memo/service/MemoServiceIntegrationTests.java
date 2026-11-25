@@ -12,11 +12,18 @@ import com.hsu.oneclickmeet.domain.course.service.CourseDeleteService;
 import com.hsu.oneclickmeet.domain.memo.dto.request.CreateMemoRequest;
 import com.hsu.oneclickmeet.domain.memo.dto.response.MemoResponse;
 import com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType;
+import com.hsu.oneclickmeet.domain.place.entity.PlaceProvider;
+import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
+import com.hsu.oneclickmeet.domain.place.entity.SharedPlace;
+import com.hsu.oneclickmeet.domain.place.repository.SavedPlaceRepository;
+import com.hsu.oneclickmeet.domain.place.repository.SharedPlaceRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +42,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 
 import static com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType.COURSE;
+import static com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType.PLACE;
 import static com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType.SHARED_COURSE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -60,6 +68,10 @@ class MemoServiceIntegrationTests {
 	@Autowired
 	private SharedCourseRepository sharedCourses;
 	@Autowired
+	private SavedPlaceRepository savedPlaces;
+	@Autowired
+	private SharedPlaceRepository sharedPlaces;
+	@Autowired
 	private CourseDeleteService courseDeletion;
 	@Autowired
 	private CoupleRepository couples;
@@ -82,7 +94,10 @@ class MemoServiceIntegrationTests {
 		jdbc.update("delete from memo_create_replays where author_id in (?, ?)", AUTHOR, PARTNER);
 		jdbc.update("delete from memos where author_id in (?, ?)", AUTHOR, PARTNER);
 		jdbc.update("delete from shared_course where shared_by_member_id = ?", AUTHOR);
+		jdbc.update("delete from shared_places where couple_id in (select id from couples"
+				+ " where first_member_id = ? and second_member_id = ?)", AUTHOR, PARTNER);
 		jdbc.update("delete from couples where first_member_id = ? and second_member_id = ?", AUTHOR, PARTNER);
+		jdbc.update("delete from saved_places where member_id = ?", AUTHOR);
 		jdbc.update("delete from course_library where member_id = ?", AUTHOR);
 		courses.deleteAllById(courseIds);
 	}
@@ -143,17 +158,45 @@ class MemoServiceIntegrationTests {
 	}
 
 	@Test
-	void graceAllowsOnlyTheAuthorsMemosAndExpiryEndsAccessAndReplay() {
+	void personalPlaceMemoRequiresAnOwnedSavedPlaceAndDisappearsAfterPlaceDeletion() {
+		long savedPlaceId = savedPlace().getId();
+		assertCode("PLACE-0404", () -> create(PARTNER, PLACE, savedPlaceId, "권한 없음"));
+		assertCode("PLACE-0404", () -> service.list(PARTNER, PLACE, savedPlaceId, null, 20));
+
+		MemoResponse created = create(AUTHOR, PLACE, savedPlaceId, "개인 장소 메모");
+		long memoId = created.memoId();
+		assertThat(service.list(AUTHOR, PLACE, savedPlaceId, null, 20).items()).containsExactly(created);
+		assertThat(service.list(AUTHOR, null, null, null, 20).items()).containsExactly(created);
+		assertCode("MEMO-0404", () -> service.detail(PARTNER, memoId));
+		assertCode("MEMO-0404", () -> service.update(PARTNER, memoId, "권한 없음"));
+		assertCode("MEMO-0404", () -> service.delete(PARTNER, memoId));
+		MemoResponse updated = service.update(AUTHOR, memoId, "수정한 메모");
+		assertThat(service.detail(AUTHOR, memoId)).isEqualTo(updated);
+		service.delete(AUTHOR, memoId);
+		assertThat(service.list(AUTHOR, PLACE, savedPlaceId, null, 20).items()).isEmpty();
+
+		MemoResponse hidden = create(AUTHOR, PLACE, savedPlaceId, "대상을 잃을 메모");
+		savedPlaces.deleteById(savedPlaceId);
+		assertCode("MEMO-0404", () -> service.detail(AUTHOR, hidden.memoId()));
+		assertThat(service.list(AUTHOR, null, null, null, 20).items()).isEmpty();
+	}
+
+	@ParameterizedTest
+	@CsvSource({"SHARED_COURSE, COURSE-0404", "SHARED_PLACE, PLACE-0404"})
+	void graceAllowsOnlyTheAuthorsMemosAndExpiryEndsAccessAndReplay(MemoTargetType type, String targetNotFound) {
 		Couple couple = couples.save(Couple.connect(AUTHOR, PARTNER, NOW));
-		long sharedId = sharedCourse(couple);
+		long sharedId = type == SHARED_COURSE ? sharedCourse(couple) : sharedPlace(couple);
+		MemoResponse partnerMemo = create(PARTNER, type, sharedId, "상대 메모");
+		assertThat(service.list(AUTHOR, type, sharedId, null, 20).items()).isEmpty();
 		startGrace(couple);
 		given(clock.instant()).willReturn(GRACE_END.minusSeconds(1));
 		UUID key = UUID.randomUUID();
-		var request = new CreateMemoRequest(SHARED_COURSE, sharedId, "내 메모");
+		var request = new CreateMemoRequest(type, sharedId, "내 메모");
 		MemoResponse authorMemo = service.create(AUTHOR, key, request);
-		MemoResponse partnerMemo = create(PARTNER, SHARED_COURSE, sharedId, "상대 메모");
 
-		assertThat(service.list(AUTHOR, SHARED_COURSE, sharedId, null, 20).items()).containsExactly(authorMemo);
+		assertThat(service.list(AUTHOR, type, sharedId, null, 20).items()).containsExactly(authorMemo);
+		assertThat(service.list(AUTHOR, null, null, null, 20).items()).containsExactly(authorMemo);
+		assertThat(service.list(PARTNER, type, sharedId, null, 20).items()).containsExactly(partnerMemo);
 		assertCode("MEMO-0404", () -> service.detail(PARTNER, authorMemo.memoId()));
 		assertCode("MEMO-0404", () -> service.update(PARTNER, authorMemo.memoId(), "권한 없음"));
 		assertCode("MEMO-0404", () -> service.delete(PARTNER, authorMemo.memoId()));
@@ -166,8 +209,9 @@ class MemoServiceIntegrationTests {
 		assertCode("MEMO-0404", () -> service.detail(AUTHOR, authorMemo.memoId()));
 		assertCode("MEMO-0404", () -> service.update(AUTHOR, authorMemo.memoId(), "유예 종료 후 수정"));
 		assertCode("MEMO-0404", () -> service.delete(AUTHOR, authorMemo.memoId()));
-		assertCode("COURSE-0404", () -> service.create(AUTHOR, key, request));
-		assertCode("COURSE-0404", () -> service.list(AUTHOR, SHARED_COURSE, sharedId, null, 20));
+		assertCode(targetNotFound, () -> service.create(AUTHOR, key, request));
+		assertCode(targetNotFound, () -> service.list(AUTHOR, type, sharedId, null, 20));
+		assertThat(service.list(AUTHOR, null, null, null, 20).items()).isEmpty();
 	}
 
 	@Test
@@ -210,6 +254,15 @@ class MemoServiceIntegrationTests {
 		long sourceId = personalCourse();
 		Course copy = saveCourse("공동 코스 사본");
 		return sharedCourses.save(SharedCourse.create(copy, couple, sourceId, AUTHOR)).getId();
+	}
+
+	private SavedPlace savedPlace() {
+		return savedPlaces.save(SavedPlace.create(AUTHOR, PlaceProvider.KAKAO, "memo-test", "장소", "주소",
+				null, null, null, 37.5, 127.0, null));
+	}
+
+	private long sharedPlace(Couple couple) {
+		return sharedPlaces.save(SharedPlace.copyFrom(couple, savedPlace(), NOW)).getId();
 	}
 
 	private Course saveCourse(String name) {

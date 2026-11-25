@@ -6,6 +6,10 @@ import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest;
 import com.hsu.oneclickmeet.domain.course.dto.request.CreateCourseRequest.PlaceRequest;
 import com.hsu.oneclickmeet.domain.course.service.CourseSaveService;
 import com.hsu.oneclickmeet.domain.course.service.CourseShareService;
+import com.hsu.oneclickmeet.domain.place.entity.PlaceProvider;
+import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
+import com.hsu.oneclickmeet.domain.place.repository.SavedPlaceRepository;
+import com.hsu.oneclickmeet.domain.place.service.SharedPlaceService;
 import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
@@ -57,6 +61,7 @@ class CommentIntegrationTests {
 
 	private static final String COMMENTS = "/api/v1/comments";
 	private static final String COMMENT = COMMENTS + "/{commentId}";
+	private static final String SHARED_PLACE = "SHARED_PLACE";
 	private static final Instant NOW = Instant.parse("2026-11-04T09:00:00Z");
 	private static final AtomicLong MEMBER_IDS = new AtomicLong(30_000);
 
@@ -74,6 +79,12 @@ class CommentIntegrationTests {
 
 	@Autowired
 	private CourseShareService courseShare;
+
+	@Autowired
+	private SavedPlaceRepository savedPlaces;
+
+	@Autowired
+	private SharedPlaceService sharedPlaceService;
 
 	@Autowired
 	private MySqlTransactionLock requestLock;
@@ -155,6 +166,91 @@ class CommentIntegrationTests {
 			.andExpect(jsonPath("$.error.code").value("COMMENT-0404"));
 		list(partner, "SHARED_COURSE", sharedCourseId).andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.items").isEmpty());
+	}
+
+	@Test
+	void showsSharedPlaceCommentsToBothMembersAndOnlyLetsEachAuthorChangeTheirOwn() throws Exception {
+		long sharedPlaceId = sharePlace();
+		couples.save(Couple.connect(outsider, MEMBER_IDS.incrementAndGet(), NOW));
+		var created = create(owner, SHARED_PLACE, sharedPlaceId, UUID.randomUUID(), "평일 저녁에 가요")
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.targetType").value(SHARED_PLACE))
+			.andExpect(jsonPath("$.data.targetId").value(sharedPlaceId))
+			.andExpect(jsonPath("$.data.editable").value(true));
+		long commentId = commentId(responseBody(created));
+
+		list(partner, SHARED_PLACE, sharedPlaceId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items[0].commentId").value(commentId))
+			.andExpect(jsonPath("$.data.items[0].editable").value(false))
+			.andExpect(jsonPath("$.data.items[0].deletable").value(false));
+		create(partner, SHARED_PLACE, sharedPlaceId, UUID.randomUUID(), "좋아요").andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.author.memberId").value(partner));
+		list(owner, SHARED_PLACE, sharedPlaceId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items.length()").value(2))
+			.andExpect(jsonPath("$.data.items[1].content").value("좋아요"));
+
+		list(outsider, SHARED_PLACE, sharedPlaceId).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("PLACE-0404"));
+		create(outsider, SHARED_PLACE, sharedPlaceId, UUID.randomUUID(), "다른 관계의 첨언")
+			.andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("PLACE-0404"));
+		edit(outsider, commentId, "변경").andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("COMMENT-0404"));
+		edit(partner, commentId, "변경").andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error.code").value("COMMENT-0403"));
+		remove(partner, commentId).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error.code").value("COMMENT-0403"));
+		edit(owner, commentId, "주말에 가요").andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.content").value("주말에 가요"));
+		remove(owner, commentId).andExpect(status().isNoContent());
+		list(partner, SHARED_PLACE, sharedPlaceId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items.length()").value(1))
+			.andExpect(jsonPath("$.data.items[0].content").value("좋아요"));
+	}
+
+	@Test
+	void distinguishesSharedPlaceAndCourseWhenTheirIdsAndCreatePayloadsOverlap() throws Exception {
+		long sharedPlaceId = sharePlace();
+		long overlappingId = sharedCourseId;
+		while (sharedPlaceId != overlappingId && jdbc.queryForObject(
+			"select exists(select 1 from shared_places where id = ?)", Boolean.class, overlappingId)) {
+			overlappingId = courseShare.share(owner, savePersonalCourse(owner), UUID.randomUUID()).sharedCourseId();
+		}
+		if (sharedPlaceId != overlappingId) {
+			// The target tables issue IDs independently. Reuse one number in both to cover type scoping.
+			jdbc.update("update shared_places set id = ? where id = ?", overlappingId, sharedPlaceId);
+		}
+		UUID key = UUID.randomUUID();
+		String body = "첫 본문";
+		String created = responseBody(create(owner, SHARED_PLACE, overlappingId, key, body).andExpect(status().isCreated()));
+		create(owner, SHARED_PLACE, overlappingId, key, body).andExpect(status().isCreated())
+			.andExpect(content().json(created));
+		create(owner, overlappingId, key, body).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("COMMENT-0409-01"));
+		list(owner, "SHARED_COURSE", overlappingId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items").isEmpty());
+	}
+
+	@Test
+	void keepsSharedPlaceCommentsReadOnlyInGraceAndHidesThemAtExpiry() throws Exception {
+		long sharedPlaceId = sharePlace();
+		UUID key = UUID.randomUUID();
+		var created = create(owner, SHARED_PLACE, sharedPlaceId, key, "유예 전 첨언").andExpect(status().isCreated());
+		long commentId = commentId(responseBody(created));
+		mvc.perform(post("/api/v1/couples/{coupleId}/disconnections", coupleId).with(member(owner)).with(csrf())
+			.header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isOk());
+
+		list(owner, SHARED_PLACE, sharedPlaceId).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items[0].readOnly").value(true))
+			.andExpect(jsonPath("$.data.items[0].editable").value(false));
+		create(owner, SHARED_PLACE, sharedPlaceId, key, "유예 전 첨언").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-01"));
+		edit(owner, commentId, "변경").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-01"));
+		remove(owner, commentId).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-01"));
+		given(clock.instant()).willReturn(NOW.plus(Duration.ofDays(30)));
+		list(partner, SHARED_PLACE, sharedPlaceId).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("PLACE-0404"));
 	}
 
 	@Test
@@ -327,13 +423,23 @@ class CommentIntegrationTests {
 		return courseSave.save(memberId, UUID.randomUUID(), request, (id, placeId) -> Optional.of("장소 " + placeId));
 	}
 
+	private long sharePlace() {
+		var place = savedPlaces.save(SavedPlace.create(owner, PlaceProvider.KAKAO, "100", "예시 카페", "서울 성북구 주소",
+			null, "카페", "CE7", 37.5822, 127.0105, null, List.of()));
+		return sharedPlaceService.share(owner, place.getId()).place().sharedPlaceId();
+	}
+
 	private ResultActions create(long memberId, UUID key, String body) throws Exception {
 		return create(memberId, sharedCourseId, key, body);
 	}
 
 	private ResultActions create(long memberId, long targetId, UUID key, String body) throws Exception {
+		return create(memberId, "SHARED_COURSE", targetId, key, body);
+	}
+
+	private ResultActions create(long memberId, String targetType, long targetId, UUID key, String body) throws Exception {
 		return mvc.perform(post(COMMENTS).with(member(memberId)).with(csrf()).header("Idempotency-Key", key.toString())
-			.contentType(MediaType.APPLICATION_JSON).content(createBody("SHARED_COURSE", targetId, body)));
+			.contentType(MediaType.APPLICATION_JSON).content(createBody(targetType, targetId, body)));
 	}
 
 	private static String createBody(String type, long targetId, String body) {

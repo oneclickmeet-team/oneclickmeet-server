@@ -16,6 +16,8 @@ import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.course.exception.CourseErrorCode;
 import com.hsu.oneclickmeet.domain.course.repository.CourseRepository;
 import com.hsu.oneclickmeet.domain.course.repository.SharedCourseRepository;
+import com.hsu.oneclickmeet.domain.place.exception.PlaceErrorCode;
+import com.hsu.oneclickmeet.domain.place.repository.SharedPlaceRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.ErrorCode;
 import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
@@ -43,6 +45,7 @@ public class CommentService {
 	private final CommentCreateRequestRepository replays;
 	private final CourseRepository courses;
 	private final SharedCourseRepository sharedCourses;
+	private final SharedPlaceRepository sharedPlaces;
 	private final CoupleRepository couples;
 	private final CoupleMemberRepository members;
 	private final MySqlTransactionLock requestLock;
@@ -50,13 +53,14 @@ public class CommentService {
 	private final Clock clock;
 
 	public CommentService(CommentRepository comments, CommentCreateRequestRepository replays,
-			CourseRepository courses, SharedCourseRepository sharedCourses, CoupleRepository couples,
-			CoupleMemberRepository members, MySqlTransactionLock requestLock, JsonMapper jsonMapper,
+			CourseRepository courses, SharedCourseRepository sharedCourses, SharedPlaceRepository sharedPlaces,
+			CoupleRepository couples, CoupleMemberRepository members, MySqlTransactionLock requestLock, JsonMapper jsonMapper,
 			@Qualifier("coupleClock") Clock clock) {
 		this.comments = comments;
 		this.replays = replays;
 		this.courses = courses;
 		this.sharedCourses = sharedCourses;
+		this.sharedPlaces = sharedPlaces;
 		this.couples = couples;
 		this.members = members;
 		this.requestLock = requestLock;
@@ -71,9 +75,10 @@ public class CommentService {
 				requireOwnedCourse(memberId, targetId, CourseErrorCode.NOT_FOUND);
 				yield true;
 			}
-			case SHARED_COURSE -> {
-				Couple couple = requireCurrentCouple(memberId, false, CourseErrorCode.NOT_FOUND);
-				requireSharedCourse(targetId, couple, CourseErrorCode.NOT_FOUND);
+			case SHARED_COURSE, SHARED_PLACE -> {
+				ErrorCode missing = targetNotFound(targetType);
+				Couple couple = requireCurrentCouple(memberId, false, missing);
+				requireSharedTarget(targetType, targetId, couple, missing);
 				yield couple.getStatus() == CoupleStatus.GRACE;
 			}
 		};
@@ -96,9 +101,15 @@ public class CommentService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CommentResponse create(long memberId, long sharedCourseId, String content, UUID requestKey) {
+		return create(memberId, CommentTargetType.SHARED_COURSE, sharedCourseId, content, requestKey);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public CommentResponse create(long memberId, CommentTargetType targetType, long targetId, String content,
+			UUID requestKey) {
 		boolean acquired = requestLock.tryAcquire(":comment-create:" + memberId + ":" + requestKey);
 		Couple couple = requireCurrentCouple(memberId, acquired, CoupleErrorCode.STATE_CONFLICT);
-		requireSharedCourse(sharedCourseId, couple, CourseErrorCode.NOT_FOUND);
+		requireSharedTarget(targetType, targetId, couple, targetNotFound(targetType));
 		requireConnected(couple);
 		if (!acquired) {
 			throw new BusinessException(CommentErrorCode.REQUEST_IN_PROGRESS);
@@ -107,13 +118,13 @@ public class CommentService {
 		var previous = replays.findByMemberIdAndRequestKey(memberId, requestKey);
 		if (previous.isPresent() && previous.get().isReplayable(now())) {
 			var response = jsonMapper.readValue(previous.get().getResponseJson(), CommentResponse.class);
-			if (response.targetId() != sharedCourseId || !response.content().equals(content)) {
+			if (response.targetType() != targetType || response.targetId() != targetId || !response.content().equals(content)) {
 				throw new BusinessException(CommentErrorCode.IDEMPOTENCY_MISMATCH);
 			}
 			return response;
 		}
 
-		var comment = comments.save(new Comment(sharedCourseId, memberId, content, now()));
+		var comment = comments.save(new Comment(targetType, targetId, memberId, content, now()));
 		var response = toResponse(comment, memberId, members.findDisplayName(memberId).orElse(null), false);
 		var replay = previous.orElseGet(() -> new CommentCreateRequestReplay(memberId, requestKey));
 		replay.complete(jsonMapper.writeValueAsString(response), now().plus(REPLAY_LIFETIME));
@@ -142,7 +153,7 @@ public class CommentService {
 			throw new BusinessException(CommentErrorCode.ARCHIVED_READ_ONLY);
 		}
 		Couple couple = requireCurrentCouple(memberId, true, CommentErrorCode.NOT_FOUND);
-		requireSharedCourse(target.getId(), couple, CommentErrorCode.NOT_FOUND);
+		requireSharedTarget(target.getType(), target.getId(), couple, CommentErrorCode.NOT_FOUND);
 		Comment comment = comments.findById(commentId)
 				.orElseThrow(() -> new BusinessException(CommentErrorCode.NOT_FOUND));
 		requireConnected(couple);
@@ -160,10 +171,19 @@ public class CommentService {
 				.orElseThrow(() -> new BusinessException(missing));
 	}
 
-	private void requireSharedCourse(long sharedCourseId, Couple couple, ErrorCode missing) {
-		if (!sharedCourses.existsByIdAndCoupleId(sharedCourseId, couple.getId())) {
+	private void requireSharedTarget(CommentTargetType targetType, long targetId, Couple couple, ErrorCode missing) {
+		boolean accessible = switch (targetType) {
+			case COURSE -> false;
+			case SHARED_COURSE -> sharedCourses.existsByIdAndCoupleId(targetId, couple.getId());
+			case SHARED_PLACE -> sharedPlaces.existsByIdAndCouple_Id(targetId, couple.getId());
+		};
+		if (!accessible) {
 			throw new BusinessException(missing);
 		}
+	}
+
+	private static ErrorCode targetNotFound(CommentTargetType targetType) {
+		return targetType == CommentTargetType.SHARED_PLACE ? PlaceErrorCode.NOT_FOUND : CourseErrorCode.NOT_FOUND;
 	}
 
 	private void requireOwnedCourse(long memberId, long courseId, ErrorCode missing) {

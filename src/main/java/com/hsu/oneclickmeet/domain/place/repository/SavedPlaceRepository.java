@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
 
@@ -19,6 +20,9 @@ public interface SavedPlaceRepository extends JpaRepository<SavedPlace, Long> {
 	Optional<SavedPlace> findByIdAndMemberId(long id, long memberId);
 
 	boolean existsByIdAndMemberId(long id, long memberId);
+
+	@Query("select p.id from SavedPlace p where p.memberId = :memberId and p.id in :savedPlaceIds")
+	Set<Long> findOwnedSavedPlaceIds(@Param("memberId") long memberId, @Param("savedPlaceIds") Set<Long> savedPlaceIds);
 
 	/** 코스 추천 후보로 쓸 최근 보관함 장소(최대 500개). */
 	List<SavedPlace> findTop500ByMemberIdOrderByIdDesc(long memberId);

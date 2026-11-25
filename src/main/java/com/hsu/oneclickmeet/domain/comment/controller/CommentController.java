@@ -44,7 +44,8 @@ public class CommentController {
 	@GetMapping
 	public ApiResponse<CommentListResponse> list(@AuthenticationPrincipal Long memberId,
 			@RequestParam("targetType")
-			@Pattern(regexp = "COURSE|SHARED_COURSE", message = "targetType은 COURSE 또는 SHARED_COURSE여야 합니다.")
+			@Pattern(regexp = "COURSE|SHARED_COURSE|SHARED_PLACE",
+					message = "targetType은 COURSE, SHARED_COURSE 또는 SHARED_PLACE여야 합니다.")
 			String targetType,
 			@RequestParam("targetId")
 			@Pattern(regexp = POSITIVE_ID_PATTERN, message = "targetId는 양의 정수여야 합니다.") String targetId,
@@ -62,8 +63,9 @@ public class CommentController {
 			@RequestHeader("Idempotency-Key")
 			@Pattern(regexp = UUID_PATTERN, message = "멱등성 키는 UUID여야 합니다.") String idempotencyKey,
 			@Valid @RequestBody CreateCommentRequest request) {
-		return ApiResponse.success(commentService.create(requireMemberId(memberId), request.targetId(),
-				request.content(), UUID.fromString(idempotencyKey)));
+		return ApiResponse.success(commentService.create(requireMemberId(memberId),
+				CommentTargetType.valueOf(request.targetType()), request.targetId(), request.content(),
+				UUID.fromString(idempotencyKey)));
 	}
 
 	@PatchMapping(value = "/{commentId}", consumes = MediaType.APPLICATION_JSON_VALUE)

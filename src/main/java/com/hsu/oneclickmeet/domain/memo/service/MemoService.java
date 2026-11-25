@@ -12,6 +12,7 @@ import com.hsu.oneclickmeet.domain.memo.repository.MemoCreateReplayRepository;
 import com.hsu.oneclickmeet.domain.memo.repository.MemoRepository;
 import com.hsu.oneclickmeet.global.exception.BusinessException;
 import com.hsu.oneclickmeet.global.exception.CommonErrorCode;
+import com.hsu.oneclickmeet.global.exception.ErrorCode;
 import com.hsu.oneclickmeet.global.persistence.MySqlTransactionLock;
 import jakarta.persistence.EntityManager;
 import org.hibernate.exception.ConstraintViolationException;
@@ -64,9 +65,9 @@ public class MemoService {
 		if (!locks.tryAcquire(":memo-create:" + memberId + ":" + idempotencyKey)) {
 			throw new BusinessException(MemoErrorCode.CREATE_IN_PROGRESS);
 		}
-		if (request.targetType() == MemoTargetType.SHARED_COURSE
-				&& !targetAccess.canAccessSharedCourseForWrite(memberId, request.targetId())) {
-			throw new BusinessException(CourseErrorCode.NOT_FOUND);
+		if (isShared(request.targetType())
+				&& !targetAccess.canAccessSharedTargetForWrite(memberId, request.targetType(), request.targetId())) {
+			throw new BusinessException(targetNotFound(request.targetType()));
 		}
 		String requestHash = fingerprint(request);
 		var previous = replays.findByAuthorIdAndRequestKey(memberId, idempotencyKey);
@@ -160,11 +161,15 @@ public class MemoService {
 
 	private void requireTargetAccess(long memberId, MemoTargetType type, long id) {
 		if (!targetAccess.canAccess(memberId, type, id)) {
-			throw new BusinessException(switch (type) {
-				case COURSE, SHARED_COURSE -> CourseErrorCode.NOT_FOUND;
-				case PLACE, SHARED_PLACE -> MemoErrorCode.PLACE_NOT_FOUND;
-			});
+			throw new BusinessException(targetNotFound(type));
 		}
+	}
+
+	private static ErrorCode targetNotFound(MemoTargetType type) {
+		return switch (type) {
+			case COURSE, SHARED_COURSE -> CourseErrorCode.NOT_FOUND;
+			case PLACE, SHARED_PLACE -> MemoErrorCode.PLACE_NOT_FOUND;
+		};
 	}
 
 	private Memo requireAccessibleMemo(long memberId, Optional<Memo> found) {
@@ -176,14 +181,18 @@ public class MemoService {
 		// Resolve the target without loading the memo before locking the relationship.
 		var target = memos.findOwnedTarget(memoId, memberId)
 				.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
-		if (target.getType() == MemoTargetType.SHARED_COURSE) {
-			if (!targetAccess.canAccessSharedCourseForWrite(memberId, target.getId())) {
+		if (isShared(target.getType())) {
+			if (!targetAccess.canAccessSharedTargetForWrite(memberId, target.getType(), target.getId())) {
 				throw new BusinessException(MemoErrorCode.NOT_FOUND);
 			}
 			return memos.findForUpdateByIdAndAuthorId(memoId, memberId)
 					.orElseThrow(() -> new BusinessException(MemoErrorCode.NOT_FOUND));
 		}
 		return requireAccessibleMemo(memberId, memos.findForUpdateByIdAndAuthorId(memoId, memberId));
+	}
+
+	private static boolean isShared(MemoTargetType type) {
+		return type == MemoTargetType.SHARED_COURSE || type == MemoTargetType.SHARED_PLACE;
 	}
 
 	private static MemoResponse toResponse(Memo memo) {
