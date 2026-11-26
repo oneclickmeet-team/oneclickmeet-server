@@ -8,6 +8,18 @@
 
 ---
 
+## #19 합의와 완료 상태 (2026-11-25)
+
+| 항목 | 확인된 상태와 근거 |
+|---|---|
+| 개인 장소 모델·코스 연결 | `saved_places` 한 테이블로 시작하고 코스에 장소 스냅샷을 보관하는 방향을 재원이 검토했다([#20 리뷰](https://github.com/oneclickmeet-team/oneclickmeet-server/pull/20)). 구현과 이전 보관함 ID 호환은 아래 데이터 모델 및 코스 설명을 따른다(#60, #93). |
+| 인증·현재 사용자 | 카카오·구글 로그인, JWT와 `Long memberId` principal이 구현돼 있다(#68). 접근 30분·갱신 14일은 현재 기본값이며 유효 시간 정책의 최종 합의로 간주하지 않는다. |
+| 오류·장소 API | 공통 응답과 오류 처리 기준은 `docs/conventions.md`, 실제 요청·응답은 `app-integration-guide.md`를 따른다. 구현 결과 반영 문서는 재원 리뷰를 거쳐 병합됐다([#70](https://github.com/oneclickmeet-team/oneclickmeet-server/pull/70)). |
+| Security 위치 | 현재 설정은 `global/config`, JWT 발급·검증은 `global/security`에 있다(#68). |
+| ERD·TRD 대조 | 저장소에 합의된 DBML이 아직 없으며 이력 관리 이슈 [#10](https://github.com/oneclickmeet-team/oneclickmeet-server/issues/10)이 열려 있다. TRD v1.0 원문도 확인하지 못했으므로 두 완료 조건은 미완료다. |
+
+이 표는 확인된 리뷰와 구현의 기록이다. 미확정 사항을 확정하거나 #19의 완료 조건을 충족한 것으로 표시하지 않는다. 상세 항목과 미정 사항은 아래를 따른다.
+
 ## 구현 결과 (2026-11-09)
 
 ### 데이터 모델
