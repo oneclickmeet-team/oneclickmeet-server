@@ -89,7 +89,7 @@
 | API | 상태 | 요청 | 응답 `data` / 주의 |
 |---|---|---|---|
 | `GET /places/search` | 구현 | `query`(1~100자), `cursor`(첫 쪽은 생략, 이후는 이전 응답의 `nextCursor`), `size`(1~15, 기본 10) | `{ items: [{ providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl }], nextCursor, hasNext }`. 위치 파라미터는 없다(보내도 무시). 결과는 검색어당 **최대 45건**이고 마지막 쪽은 `hasNext`가 false, `nextCursor`가 null. 검색어나 `size`를 바꾸면 이전 커서는 쓸 수 없다(400) |
-| `POST /places/resolve/link` | 구현 | `{ "sharedText": "..." }`(최대 2000자). 공유받은 텍스트 전체를 그대로. **서버는 URL을 열지 않는다** | `{ status: "CANDIDATES_FOUND" \| "NEEDS_SEARCH", extractedQuery, candidates: [...] }`. `NEEDS_SEARCH`면 직접 검색 화면으로 안내하고 `extractedQuery`가 있으면 검색창에 채운다. `candidates`의 항목은 검색 후보 필드에 `matchType`(`EXACT`면 기본 선택, `SIMILAR`면 접어서 `matchReasons`와 함께 표시), `matchReasons`, `tags`(`{label, mentionCount}`, 근거가 약하면 빈 목록)가 더해진다 |
+| `POST /places/resolve/link` | 구현 | `{ "sharedText": "..." }`(최대 20000자). 공유받은 텍스트 전체를 그대로. **서버는 URL을 열지 않는다** | `{ status: "CANDIDATES_FOUND" \| "NEEDS_SEARCH", extractedQuery, candidates: [...] }`. `NEEDS_SEARCH`면 직접 검색 화면으로 안내하고 `extractedQuery`가 있으면 검색창에 채운다. `candidates`의 항목은 검색 후보 필드에 `matchType`(`EXACT`면 기본 선택, `SIMILAR`면 접어서 `matchReasons`와 함께 표시), `matchReasons`, `tags`(`{label, mentionCount}`, 근거가 약하면 빈 목록)가 더해진다 |
 | `POST /places/resolve/image` | 구현 | multipart, 원본 한 장은 파트 이름 `image`, 추가 캡처는 파트 이름 `extraImages`로 최대 4장(없어도 됨, **같은 장소**의 다른 화면(홈·메뉴·정보 탭)용이며 장소가 서로 다른 사진을 한 번에 보내는 용도가 아니다. 장수만큼 인식 시간이 늘어난다). JPEG·PNG·WebP, 장당 서버 검증 상한 5MB. 추가 캡처가 5장 이상이거나 한 장이라도 올바르지 않으면 400(`COMMON-0400`) | 위와 같음. 업로드 한도는 §4-7. **최대 1분 이상 걸릴 수 있으므로 요청 대기 시간을 70초 이상으로** 둔다(AI 서버의 보정 읽기가 켜지면 최대 약 60초) |
 
 - `providerPlaceId`는 카카오 장소 ID(문자열). 동명 장소는 걸러내지 않는다.
