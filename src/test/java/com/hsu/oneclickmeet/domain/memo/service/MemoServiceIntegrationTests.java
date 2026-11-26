@@ -262,7 +262,7 @@ class MemoServiceIntegrationTests {
 	}
 
 	private long sharedPlace(Couple couple) {
-		return sharedPlaces.save(SharedPlace.copyFrom(couple, savedPlace(), NOW)).getId();
+		return sharedPlaces.save(SharedPlace.copyFrom(couple, savedPlace(), AUTHOR, NOW)).getId();
 	}
 
 	private Course saveCourse(String name) {
