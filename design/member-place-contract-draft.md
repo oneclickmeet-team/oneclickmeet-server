@@ -8,6 +8,18 @@
 
 ---
 
+## #19 합의와 완료 상태 (2026-11-25)
+
+| 항목 | 확인된 상태와 근거 |
+|---|---|
+| 개인 장소 모델·코스 연결 | `saved_places` 한 테이블로 시작하고 코스에 장소 스냅샷을 보관하는 방향을 재원이 검토했다([#20 리뷰](https://github.com/oneclickmeet-team/oneclickmeet-server/pull/20)). 구현과 이전 보관함 ID 호환은 아래 데이터 모델 및 코스 설명을 따른다(#60, #93). |
+| 인증·현재 사용자 | 카카오·구글 로그인, JWT와 `Long memberId` principal이 구현돼 있다(#68). 접근 30분·갱신 14일은 현재 기본값이며 유효 시간 정책의 최종 합의로 간주하지 않는다. |
+| 오류·장소 API | 공통 응답과 오류 처리 기준은 `docs/conventions.md`, 실제 요청·응답은 `app-integration-guide.md`를 따른다. 구현 결과 반영 문서는 재원 리뷰를 거쳐 병합됐다([#70](https://github.com/oneclickmeet-team/oneclickmeet-server/pull/70)). |
+| Security 위치 | 현재 설정은 `global/config`, JWT 발급·검증은 `global/security`에 있다(#68). |
+| ERD·TRD 대조 | 저장소에 합의된 DBML이 아직 없으며 이력 관리 이슈 [#10](https://github.com/oneclickmeet-team/oneclickmeet-server/issues/10)이 열려 있다. TRD v1.0 원문도 확인하지 못했으므로 두 완료 조건은 미완료다. |
+
+이 표는 확인된 리뷰와 구현의 기록이다. 미확정 사항을 확정하거나 #19의 완료 조건을 충족한 것으로 표시하지 않는다. 상세 항목과 미정 사항은 아래를 따른다.
+
 ## 구현 결과 (2026-11-09)
 
 ### 데이터 모델
@@ -17,7 +29,7 @@
 | `members` (#68) | `id`(IDENTITY), `name`(닉네임, NOT NULL), `email`(NULL), `provider`(`KAKAO`/`GOOGLE`), `provider_user_id`, `created_at`, `updated_at`. 유니크 (`provider`, `provider_user_id`) | 컬럼 이름이 `auth_provider`가 아니라 `provider`. `password_hash` 없음(이메일 가입 제외). `course`·`couple`·`comment` 코드가 `members(id, name)`을 직접 조회하므로 `name`을 유지했고, 다른 도메인의 통합 테스트가 `id, name`만 넣기 때문에 `provider`·`provider_user_id`는 DB에서 NULL 허용(가입 코드는 항상 채움). 테스트가 정리되면 NOT NULL로 바꾼다 |
 | `refresh_tokens` (#68) | `member_id`, `token_hash`(SHA-256, 유니크), `expires_at`, `revoked_at` | 제안에 없던 테이블. 갱신 토큰 원문은 저장하지 않는다 |
 | `saved_places` (#60) | `member_id`, `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `favorite`(NOT NULL, 기본 false), `created_at`, `updated_at`. 유니크 (`member_id`, `provider`, `provider_place_id`) | `category_group_code`·`place_url` 추가, `tags`(JSON, nullable, 블로그 태그 최대 5개, #89) 추가, `source_url`·`hours`는 미구현 |
-| `shared_places` (#96) | `id`(IDENTITY), `couple_id`(`couples.id` 참조), `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `tags`(JSON, NOT NULL), `shared_at`. 유니크 (`couple_id`, `provider`, `provider_place_id`), 목록 인덱스 (`couple_id`, `id`) | 관계별로 최초 공유한 장소의 스냅샷을 저장한다. `saved_places`를 참조하는 외래 키가 없으므로 개인 장소를 지워도 공동 장소의 ID와 상세 정보는 유지된다 |
+| `shared_places` (#96) | `id`(IDENTITY), `couple_id`(`couples.id` 참조), `provider`, `provider_place_id`, `name`, `address`, `road_address`, `category`, `category_group_code`, `lat`, `lng`, `place_url`, `tags`(JSON, NOT NULL), `shared_by_member_id`(기존 데이터는 NULL), `shared_at`. 유니크 (`couple_id`, `provider`, `provider_place_id`), 목록 인덱스 (`couple_id`, `id`) | 관계별로 최초 공유한 장소의 스냅샷을 저장한다. `saved_places`를 참조하는 외래 키가 없으므로 개인 장소를 지워도 공동 장소의 ID와 상세 정보는 유지된다 |
 | `activities`, `notifications` (#62) | 회원별 활동 기록과 알림(읽음 시각) | 제안 범위 밖이던 영역 |
 
 #### 코스와 보관함 (§2.3)
@@ -72,12 +84,19 @@ CREATE TABLE shared_places (
   lng DOUBLE NOT NULL,
   place_url VARCHAR(500),
   tags JSON NOT NULL,
+  shared_by_member_id BIGINT NULL,
   shared_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   CONSTRAINT fk_shared_places_couple FOREIGN KEY (couple_id) REFERENCES couples (id),
   CONSTRAINT uk_shared_places_couple_place UNIQUE (couple_id, provider, provider_place_id),
   INDEX idx_shared_places_couple_id (couple_id, id)
 ) ENGINE=InnoDB;
+```
+
+기존 `shared_places` 테이블에는 배포 전에 아래 컬럼을 추가한다. 기존 행은 최초 공유자를 알 수 없어 NULL로 유지하며 새 공유부터 기록한다.
+
+```sql
+ALTER TABLE shared_places ADD COLUMN shared_by_member_id BIGINT NULL;
 ```
 
 #### 장소 메모 및 첨언 (#97)
