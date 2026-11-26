@@ -4,6 +4,7 @@ import com.hsu.oneclickmeet.domain.comment.entity.Comment;
 import com.hsu.oneclickmeet.domain.comment.entity.CommentTargetType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,6 +13,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CommentRepository extends JpaRepository<Comment, Long> {
+
+	@Modifying
+	@Query("delete from Comment c where c.targetType = :type and c.targetId = :id")
+	void deleteForTarget(@Param("type") CommentTargetType type, @Param("id") long id);
 
 	boolean existsByTargetTypeAndTargetId(CommentTargetType targetType, long targetId);
 

@@ -1,11 +1,17 @@
 package com.hsu.oneclickmeet.domain.place.service;
 
+import com.hsu.oneclickmeet.domain.comment.entity.CommentTargetType;
+import com.hsu.oneclickmeet.domain.comment.repository.CommentCreateRequestRepository;
+import com.hsu.oneclickmeet.domain.comment.repository.CommentRepository;
 import com.hsu.oneclickmeet.domain.couple.dto.response.PartnerResponse;
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.entity.CoupleStatus;
 import com.hsu.oneclickmeet.domain.couple.exception.CoupleErrorCode;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
 import com.hsu.oneclickmeet.domain.member.repository.MemberRepository;
+import com.hsu.oneclickmeet.domain.memo.entity.MemoTargetType;
+import com.hsu.oneclickmeet.domain.memo.repository.MemoRepository;
+import com.hsu.oneclickmeet.domain.memo.repository.MemoCreateReplayRepository;
 import com.hsu.oneclickmeet.domain.place.dto.response.SharedPlaceListResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.SharedPlaceResponse;
 import com.hsu.oneclickmeet.domain.place.entity.SharedPlace;
@@ -34,14 +40,23 @@ public class SharedPlaceService {
 	private final CoupleRepository couples;
 	private final MemberRepository members;
 	private final Clock clock;
+	private final MemoRepository memos;
+	private final MemoCreateReplayRepository memoReplays;
+	private final CommentRepository comments;
+	private final CommentCreateRequestRepository commentReplays;
 
 	public SharedPlaceService(SavedPlaceRepository savedPlaces, SharedPlaceRepository sharedPlaces,
-			CoupleRepository couples, MemberRepository members, @Qualifier("coupleClock") Clock clock) {
+			CoupleRepository couples, MemberRepository members, MemoRepository memos, MemoCreateReplayRepository memoReplays,
+			CommentRepository comments, CommentCreateRequestRepository commentReplays, @Qualifier("coupleClock") Clock clock) {
 		this.savedPlaces = savedPlaces;
 		this.sharedPlaces = sharedPlaces;
 		this.couples = couples;
 		this.members = members;
 		this.clock = clock;
+		this.memos = memos;
+		this.memoReplays = memoReplays;
+		this.comments = comments;
+		this.commentReplays = commentReplays;
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -83,6 +98,23 @@ public class SharedPlaceService {
 		boolean readOnly = couple.getStatus() == CoupleStatus.GRACE;
 		return new SharedPlaceListResponse(coupleId, couple.getStatus(), readOnly, couple.getGraceEndsAt(),
 				items, nextCursor, hasNext);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public void remove(long memberId, long sharedPlaceId) {
+		Couple couple = couples.findCurrentForUpdate(memberId, now())
+				.orElseThrow(() -> new BusinessException(PlaceErrorCode.NOT_FOUND));
+		if (couple.getStatus() != CoupleStatus.CONNECTED) {
+			throw new BusinessException(couple.isInGrace(now())
+					? CoupleErrorCode.GRACE_READ_ONLY : PlaceErrorCode.NOT_FOUND);
+		}
+		var place = sharedPlaces.findByIdAndCouple_Id(sharedPlaceId, couple.getId())
+				.orElseThrow(() -> new BusinessException(PlaceErrorCode.NOT_FOUND));
+		commentReplays.deleteForSharedPlace(sharedPlaceId);
+		comments.deleteForTarget(CommentTargetType.SHARED_PLACE, sharedPlaceId);
+		memoReplays.deleteForTarget(MemoTargetType.SHARED_PLACE, sharedPlaceId);
+		memos.deleteForTarget(MemoTargetType.SHARED_PLACE, sharedPlaceId);
+		sharedPlaces.delete(place);
 	}
 
 	private SharedPlaceResponse response(SharedPlace place) {

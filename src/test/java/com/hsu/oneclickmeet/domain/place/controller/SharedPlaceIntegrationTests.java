@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
@@ -28,6 +29,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -211,12 +213,68 @@ class SharedPlaceIntegrationTests {
 			.andExpect(jsonPath("$.data.readOnly").value(true))
 			.andExpect(jsonPath("$.data.graceEndsAt").value(couple.getGraceEndsAt().toString()))
 			.andExpect(jsonPath("$.data.items[0].sharedPlaceId").value(sharedPlaceId));
+		mvc.perform(delete(LIST + "/{id}", sharedPlaceId).with(member(partner))).andExpect(status().isConflict());
 		share(partner, unsharedPlaceId).andExpect(status().isConflict())
 			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-01"));
 
 		given(clock.instant()).willReturn(couple.getGraceEndsAt());
 		mvc.perform(get(LIST).with(member(partner))).andExpect(status().isConflict())
 			.andExpect(jsonPath("$.error.code").value("COUPLE-0409-02"));
+	}
+
+	@Test
+	void eitherPartnerCanRemoveSharedPlaceAndItsRecordsWithoutDeletingPersonalPlaces() throws Exception {
+		long source = savePlace(owner, "301", "삭제할 공동 장소");
+		long sharedId = createShare(owner, source);
+		long remainingId = createShare(partner, savePlace(partner, "302", "남길 장소"));
+		String body = "{\"targetType\":\"SHARED_PLACE\",\"targetId\":" + sharedId + ",\"content\":\"기록\"}";
+		for (long memberId : new long[] {owner, partner}) {
+			mvc.perform(post("/api/v1/memos").with(member(memberId)).header("Idempotency-Key", UUID.randomUUID())
+					.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated());
+			mvc.perform(post("/api/v1/comments").with(member(memberId)).header("Idempotency-Key", UUID.randomUUID())
+					.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated());
+		}
+		String retainedBody = "{\"targetType\":\"SHARED_PLACE\",\"targetId\":" + remainingId + ",\"content\":\"남길 기록\"}";
+		mvc.perform(post("/api/v1/comments").with(member(owner)).header("Idempotency-Key", UUID.randomUUID())
+				.contentType(MediaType.APPLICATION_JSON).content(retainedBody)).andExpect(status().isCreated());
+		long outsider = MEMBER_IDS.incrementAndGet();
+		couples.save(Couple.connect(outsider, MEMBER_IDS.incrementAndGet(), NOW));
+		mvc.perform(delete(LIST + "/{id}", sharedId).with(member(outsider))).andExpect(status().isNotFound());
+		mvc.perform(delete(LIST + "/{id}", sharedId).with(member(partner))).andExpect(status().isNoContent());
+		for (long memberId : new long[] {owner, partner}) {
+			mvc.perform(get(LIST).with(member(memberId))).andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.items.length()").value(1))
+					.andExpect(jsonPath("$.data.items[0].sharedPlaceId").value(remainingId));
+		}
+		mvc.perform(get("/api/v1/saved-places/{id}", source).with(member(owner))).andExpect(status().isOk());
+		assertThat(jdbc.queryForObject("select count(*) from memos where target_type = 'SHARED_PLACE' and target_id = ?", Long.class, sharedId)).isZero();
+		assertThat(jdbc.queryForObject("select count(*) from comments where target_type = 'SHARED_PLACE' and target_id = ?", Long.class, sharedId)).isZero();
+		assertThat(jdbc.queryForObject("select count(*) from comment_create_requests where json_unquote(json_extract(response_json, '$.targetId')) = ?", Long.class, Long.toString(sharedId))).isZero();
+		assertThat(jdbc.queryForObject("select count(*) from comments where target_type = 'SHARED_PLACE' and target_id = ?", Long.class, remainingId)).isEqualTo(1);
+		mvc.perform(delete(LIST + "/{id}", sharedId).with(member(owner))).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void removingAndCreatingACommentConcurrentlyLeavesNoOrphan() throws Exception {
+		long sharedId = createShare(owner, savePlace(owner, "303", "동시 요청 장소"));
+		String body = "{\"targetType\":\"SHARED_PLACE\",\"targetId\":" + sharedId + ",\"content\":\"동시 기록\"}";
+		var start = new CyclicBarrier(2);
+		try (var executor = Executors.newFixedThreadPool(2)) {
+			var remove = executor.submit(() -> {
+				start.await(5, TimeUnit.SECONDS);
+				return mvc.perform(delete(LIST + "/{id}", sharedId).with(member(owner))).andReturn().getResponse();
+			});
+			var create = executor.submit(() -> {
+				start.await(5, TimeUnit.SECONDS);
+				return mvc.perform(post("/api/v1/comments").with(member(partner))
+						.header("Idempotency-Key", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON)
+						.content(body)).andReturn().getResponse();
+			});
+			assertThat(remove.get(10, TimeUnit.SECONDS).getStatus()).isEqualTo(204);
+			assertThat(create.get(10, TimeUnit.SECONDS).getStatus()).isIn(201, 404);
+		}
+		assertThat(jdbc.queryForObject("select count(*) from comments where target_type = 'SHARED_PLACE' and target_id = ?", Long.class, sharedId)).isZero();
+		assertThat(jdbc.queryForObject("select count(*) from comment_create_requests where json_unquote(json_extract(response_json, '$.targetType')) = 'SHARED_PLACE' and json_unquote(json_extract(response_json, '$.targetId')) = ?", Long.class, Long.toString(sharedId))).isZero();
 	}
 
 	@Test
