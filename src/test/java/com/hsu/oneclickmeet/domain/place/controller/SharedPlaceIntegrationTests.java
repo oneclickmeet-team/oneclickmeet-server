@@ -2,6 +2,9 @@ package com.hsu.oneclickmeet.domain.place.controller;
 
 import com.hsu.oneclickmeet.domain.couple.entity.Couple;
 import com.hsu.oneclickmeet.domain.couple.repository.CoupleRepository;
+import com.hsu.oneclickmeet.domain.member.entity.Member;
+import com.hsu.oneclickmeet.domain.member.entity.SocialProvider;
+import com.hsu.oneclickmeet.domain.member.repository.MemberRepository;
 import com.hsu.oneclickmeet.domain.place.entity.PlaceProvider;
 import com.hsu.oneclickmeet.domain.place.entity.SavedPlace;
 import com.hsu.oneclickmeet.domain.place.entity.SavedPlaceTag;
@@ -61,6 +64,9 @@ class SharedPlaceIntegrationTests {
 
 	@Autowired
 	private SavedPlaceRepository savedPlaces;
+
+	@Autowired
+	private MemberRepository members;
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -127,6 +133,33 @@ class SharedPlaceIntegrationTests {
 			.andExpect(jsonPath("$.data.name").value("처음 공유한 이름"));
 		mvc.perform(get(LIST).with(member(owner))).andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.items.length()").value(1));
+	}
+
+	@Test
+	void showsFirstSharerForBothMembersAndKeepsUnknownLegacySharerNull() throws Exception {
+		long first = members.save(Member.signUp(SocialProvider.KAKAO, "sharer-" + owner, "첫째", null)).getId();
+		long second = members.save(Member.signUp(SocialProvider.KAKAO, "sharer-" + partner, "둘째", null)).getId();
+		couples.save(Couple.connect(first, second, NOW));
+		long firstSource = savePlace(first, "201", "첫 번째");
+		long secondSource = savePlace(second, "202", "두 번째");
+		long duplicate = savePlace(second, "201", "중복");
+		long firstShare = createShare(first, firstSource);
+		createShare(second, secondSource);
+		share(second, duplicate).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.sharedBy.memberId").value(first))
+			.andExpect(jsonPath("$.data.sharedBy.displayName").value("첫째"));
+		for (long memberId : new long[] {first, second}) {
+			mvc.perform(get(LIST).with(member(memberId))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.items[0].sharedBy.memberId").value(second))
+				.andExpect(jsonPath("$.data.items[0].sharedBy.displayName").value("둘째"))
+				.andExpect(jsonPath("$.data.items[1].sharedBy.memberId").value(first))
+				.andExpect(jsonPath("$.data.items[1].sharedBy.displayName").value("첫째"));
+		}
+		jdbc.update("update shared_places set shared_by_member_id = null where id = ?", firstShare);
+		share(second, duplicate).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.sharedBy").value(nullValue()));
+		mvc.perform(get(LIST).with(member(first))).andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.items[1].sharedBy").value(nullValue()));
 	}
 
 	@Test

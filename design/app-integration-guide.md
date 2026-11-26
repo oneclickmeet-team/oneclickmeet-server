@@ -89,7 +89,7 @@
 | API | 상태 | 요청 | 응답 `data` / 주의 |
 |---|---|---|---|
 | `GET /places/search` | 구현 | `query`(1~100자), `cursor`(첫 쪽은 생략, 이후는 이전 응답의 `nextCursor`), `size`(1~15, 기본 10) | `{ items: [{ providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl }], nextCursor, hasNext }`. 위치 파라미터는 없다(보내도 무시). 결과는 검색어당 **최대 45건**이고 마지막 쪽은 `hasNext`가 false, `nextCursor`가 null. 검색어나 `size`를 바꾸면 이전 커서는 쓸 수 없다(400) |
-| `POST /places/resolve/link` | 구현 | `{ "sharedText": "..." }`(최대 2000자). 공유받은 텍스트 전체를 그대로. **서버는 URL을 열지 않는다** | `{ status: "CANDIDATES_FOUND" \| "NEEDS_SEARCH", extractedQuery, candidates: [...] }`. `NEEDS_SEARCH`면 직접 검색 화면으로 안내하고 `extractedQuery`가 있으면 검색창에 채운다. `candidates`의 항목은 검색 후보 필드에 `matchType`(`EXACT`면 기본 선택, `SIMILAR`면 접어서 `matchReasons`와 함께 표시), `matchReasons`, `tags`(`{label, mentionCount}`, 근거가 약하면 빈 목록)가 더해진다 |
+| `POST /places/resolve/link` | 구현 | `{ "sharedText": "..." }`(최대 20000자). 공유받은 텍스트 전체를 그대로. **서버는 URL을 열지 않는다** | `{ status: "CANDIDATES_FOUND" \| "NEEDS_SEARCH", extractedQuery, candidates: [...] }`. `NEEDS_SEARCH`면 직접 검색 화면으로 안내하고 `extractedQuery`가 있으면 검색창에 채운다. `candidates`의 항목은 검색 후보 필드에 `matchType`(`EXACT`면 기본 선택, `SIMILAR`면 접어서 `matchReasons`와 함께 표시), `matchReasons`, `tags`(`{label, mentionCount}`, 근거가 약하면 빈 목록)가 더해진다 |
 | `POST /places/resolve/image` | 구현 | multipart, 원본 한 장은 파트 이름 `image`, 추가 캡처는 파트 이름 `extraImages`로 최대 4장(없어도 됨, **같은 장소**의 다른 화면(홈·메뉴·정보 탭)용이며 장소가 서로 다른 사진을 한 번에 보내는 용도가 아니다. 장수만큼 인식 시간이 늘어난다). JPEG·PNG·WebP, 장당 서버 검증 상한 5MB. 추가 캡처가 5장 이상이거나 한 장이라도 올바르지 않으면 400(`COMMON-0400`) | 위와 같음. 업로드 한도는 §4-7. **최대 1분 이상 걸릴 수 있으므로 요청 대기 시간을 70초 이상으로** 둔다(AI 서버의 보정 읽기가 켜지면 최대 약 60초) |
 
 - `providerPlaceId`는 카카오 장소 ID(문자열). 동명 장소는 걸러내지 않는다.
@@ -100,9 +100,10 @@
 
 | API | 상태 | 요청 | 응답 |
 |---|---|---|---|
-| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수), 선택 `tags`(`[{label, mentionCount}]`, 최대 5개). 링크·이미지 인식 결과의 `tags`를 그대로 보내며, 없거나 비어 있어도 저장된다 | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt, tags }`(`tags`는 없으면 `[]`). 목록·상세 조회 응답에도 `tags`가 같이 내려간다. 이미 저장한 장소를 다시 저장해도 처음 저장한 값(태그 포함)은 바뀌지 않는다 |
+| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수), 선택 `tags`(`[{label, mentionCount}]`, 최대 5개). 링크·이미지 인식 결과의 `tags`를 그대로 보내며, 없거나 비어 있어도 저장된다 | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt, tags }`(`tags`는 없으면 `[]`). 목록·상세 조회 응답에도 `tags`와 개인 하트 상태 `favorite`이 같이 내려간다. 처음 저장한 장소와 기존 장소의 하트는 기본적으로 꺼져 있다. 이미 저장한 장소를 다시 저장해도 처음 저장한 값(태그 포함)은 바뀌지 않는다 |
 | `GET /saved-places` | 구현 | `cursor`, `size`, `categoryGroupCode`(선택, 예 `CE7`) | `{ items: [...], nextCursor, hasNext }`, 최신 저장순 |
 | `GET /saved-places/{id}` | 구현 | — | 위 항목 1건 |
+| `PUT /saved-places/{id}/favorite` | 구현 | `{ "favorite": true }` 또는 `false` | 변경된 개인 장소 항목. 본인의 장소만 변경 가능 |
 | `DELETE /saved-places/{id}` | 구현 | — | 204 |
 | `GET /saved-places/{id}/nearby` | 구현 | `category`=`CAFE`\|`RESTAURANT`\|`EXHIBITION`\|`PARK`(기본 `CAFE`) | `{ savedPlaceId, category, items: [{ place: {후보 필드}, distanceMeters }] }`. 저장된 장소 기준 반경 1km, 가까운 순 |
 
@@ -114,7 +115,7 @@
 | `POST /saved-places/{savedPlaceId}/share` | 내 개인 보관함의 `savedPlaceId`. 요청 본문 없음 | 첫 공유는 201, 같은 관계에서 이미 공유한 장소는 200. 공동 장소 항목 한 건 |
 | `GET /couples/me/places` | 선택 `cursor`, `size`(기본 20, 1~100) | 200. `{ coupleId, relationshipStatus, readOnly, graceEndsAt, items, nextCursor, hasNext }` |
 
-- 공동 장소 항목의 필드는 `sharedPlaceId`, `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`, `tags`, `sharedAt`이다. `sharedAt`은 UTC ISO 8601 형식이고, 태그가 없으면 `tags`는 `[]`이다.
+- 공동 장소 항목의 필드는 `sharedPlaceId`, `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`, `tags`, `sharedAt`, `sharedBy`이다. `sharedBy`는 최초 공유자의 `{memberId, displayName}`이며 이름을 조회할 수 없으면 `displayName`은 `null`이다. 기존 데이터처럼 최초 공유자를 알 수 없으면 `sharedBy` 자체가 `null`이다. 같은 장소를 다시 공유해도 최초 공유자는 유지된다. `sharedAt`은 UTC ISO 8601 형식이고, 태그가 없으면 `tags`는 `[]`이다.
 - 같은 관계의 두 사람이 동일한 카카오 장소를 각자 저장한 뒤 공유해도, 먼저 공유한 항목의 `sharedPlaceId`와 장소 정보를 돌려준다. 공유된 장소는 공유 당시의 정보를 보관하므로 내 개인 보관함에서 삭제해도 공동 목록에 남는다.
 - `items`는 `sharedPlaceId`가 큰 순서로 내려간다. 다음 요청에는 받은 `nextCursor`를 그대로 넣고, `hasNext`가 `false`이면 조회를 마친다. 관계가 바뀌면 커서 없이 다시 조회한다.
 - `relationshipStatus`가 `CONNECTED`이면 `readOnly`는 `false`, `graceEndsAt`은 `null`이다. 유예 중에는 두 사람 모두 `GRACE`, `readOnly: true`, `graceEndsAt`을 받는다. 유예 중 새로 공유하려 하면 `COUPLE-0409-01`이다. 현재 관계가 없으면 두 API 모두 `COUPLE-0409-02`로 응답한다. 공유 요청에서 개인 장소가 없거나 본인 소유가 아니면 관계 상태 확인 전에 `PLACE-0404`를 반환한다.
