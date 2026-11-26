@@ -74,6 +74,13 @@ public class SavedPlace extends BaseEntity {
 	@Column(length = 500)
 	private String placeUrl;
 
+	@Column(nullable = false)
+	private boolean favorite;
+
+	public void changeFavorite(boolean favorite) {
+		this.favorite = favorite;
+	}
+
 	/** 블로그 언급 기반 태그. 태그가 없으면 null로 저장하고, 기존 행도 null이다. */
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(columnDefinition = "json")

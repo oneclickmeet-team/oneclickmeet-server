@@ -100,9 +100,10 @@
 
 | API | 상태 | 요청 | 응답 |
 |---|---|---|---|
-| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수), 선택 `tags`(`[{label, mentionCount}]`, 최대 5개). 링크·이미지 인식 결과의 `tags`를 그대로 보내며, 없거나 비어 있어도 저장된다 | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt, tags }`(`tags`는 없으면 `[]`). 목록·상세 조회 응답에도 `tags`가 같이 내려간다. 이미 저장한 장소를 다시 저장해도 처음 저장한 값(태그 포함)은 바뀌지 않는다 |
+| `POST /saved-places` | 구현 | 검색 후보의 필드를 그대로: `providerPlaceId`, `name`, `address`, `roadAddress`, `category`, `categoryGroupCode`, `lat`, `lng`, `placeUrl`(`providerPlaceId`·`name`·`address`·`lat`·`lng` 필수), 선택 `tags`(`[{label, mentionCount}]`, 최대 5개). 링크·이미지 인식 결과의 `tags`를 그대로 보내며, 없거나 비어 있어도 저장된다 | **새로 저장 201, 이미 저장한 장소는 200**(오류가 아님, 같은 항목을 돌려줌). `{ savedPlaceId, providerPlaceId, name, address, roadAddress, category, categoryGroupCode, lat, lng, placeUrl, savedAt, tags }`(`tags`는 없으면 `[]`). 목록·상세 조회 응답에도 `tags`와 개인 하트 상태 `favorite`이 같이 내려간다. 처음 저장한 장소와 기존 장소의 하트는 기본적으로 꺼져 있다. 이미 저장한 장소를 다시 저장해도 처음 저장한 값(태그 포함)은 바뀌지 않는다 |
 | `GET /saved-places` | 구현 | `cursor`, `size`, `categoryGroupCode`(선택, 예 `CE7`) | `{ items: [...], nextCursor, hasNext }`, 최신 저장순 |
 | `GET /saved-places/{id}` | 구현 | — | 위 항목 1건 |
+| `PUT /saved-places/{id}/favorite` | 구현 | `{ "favorite": true }` 또는 `false` | 변경된 개인 장소 항목. 본인의 장소만 변경 가능 |
 | `DELETE /saved-places/{id}` | 구현 | — | 204 |
 | `GET /saved-places/{id}/nearby` | 구현 | `category`=`CAFE`\|`RESTAURANT`\|`EXHIBITION`\|`PARK`(기본 `CAFE`) | `{ savedPlaceId, category, items: [{ place: {후보 필드}, distanceMeters }] }`. 저장된 장소 기준 반경 1km, 가까운 순 |
 

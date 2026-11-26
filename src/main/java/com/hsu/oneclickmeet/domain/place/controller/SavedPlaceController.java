@@ -1,6 +1,7 @@
 package com.hsu.oneclickmeet.domain.place.controller;
 
 import com.hsu.oneclickmeet.domain.place.dto.request.SaveSavedPlaceRequest;
+import com.hsu.oneclickmeet.domain.place.dto.request.UpdateFavoriteRequest;
 import com.hsu.oneclickmeet.domain.place.dto.response.SavedPlaceListResponse;
 import com.hsu.oneclickmeet.domain.place.dto.response.SavedPlaceResponse;
 import com.hsu.oneclickmeet.domain.place.service.SavedPlaceService;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -63,6 +65,15 @@ public class SavedPlaceController {
 			@PathVariable("savedPlaceId")
 			@Pattern(regexp = POSITIVE_ID_PATTERN, message = "savedPlaceId는 양의 정수여야 합니다.") String savedPlaceId) {
 		return ApiResponse.success(savedPlaceService.detail(requireMemberId(memberId), parseId(savedPlaceId)));
+	}
+
+	@PutMapping(value = "/{savedPlaceId}/favorite", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ApiResponse<SavedPlaceResponse> updateFavorite(@AuthenticationPrincipal Long memberId,
+			@PathVariable("savedPlaceId")
+			@Pattern(regexp = POSITIVE_ID_PATTERN, message = "savedPlaceId는 양의 정수여야 합니다.") String savedPlaceId,
+			@Valid @RequestBody UpdateFavoriteRequest request) {
+		return ApiResponse.success(savedPlaceService.updateFavorite(requireMemberId(memberId), parseId(savedPlaceId),
+				request.favorite()));
 	}
 
 	@DeleteMapping("/{savedPlaceId}")
