@@ -115,7 +115,7 @@ ALTER TABLE comments
 
 ### 인증 (#68, 재원 승인 후 병합)
 
-- 소셜 로그인(카카오·구글)만 구현했다. 이메일 가입·로그인은 처음에는 제외했으나 **시연에 포함하기로 해 재원이 추가한다**(2026-11-09, §3.1, §5-5).
+- 소셜 로그인(카카오·구글)만 구현했다. 이메일 가입·로그인은 **개발하지 않는다**(2026-11-27 결정, §5-5).
 - 앱이 받은 증표를 서버가 제공자에게 확인한다: 카카오는 `access_token_info`로 **우리 앱(app_id)에 발급된 토큰인지** 확인한 뒤 `v2/user/me`, 구글은 `tokeninfo`의 `aud`·`iss`. 앱 번호(`KAKAO_LOGIN_APP_ID`)·클라이언트 ID(`GOOGLE_LOGIN_CLIENT_ID`)가 없으면 로그인이 동작하지 않는다.
 - 토큰: 접근 토큰 JWT(HS256, 30분), 갱신 토큰(14일, 한 번 쓰면 폐기·재발급, 이미 쓴 토큰이 다시 오면 그 회원의 갱신 토큰을 모두 폐기). 비밀키는 `JWT_SECRET`(32바이트 이상). 유효 시간은 제안값이며 정책 확정 시 조정한다.
 - 현재 사용자 표현(§3.3, §5-4): **`@AuthenticationPrincipal Long memberId`** 한 가지.
@@ -154,7 +154,7 @@ ALTER TABLE comments
 | 2. 코스의 장소 참조 방식 | 개인 코스가 장소 스냅샷을 보관하고, 이전 보관함 번호 기반 코스도 조회·수정할 수 있다. 위 "코스와 보관함" 참고 |
 | 3. Security 설정 위치 | `global/config`(재원 승인) |
 | 4. 현재 사용자 표현 | `@AuthenticationPrincipal Long memberId` |
-| 5. 이메일 가입 | 카카오·구글 구현. 이메일 가입·로그인은 시연에 포함하기로 해 재원이 추가 예정 |
+| 5. 이메일 가입 | **개발하지 않음**(2026-11-27). 로그인은 카카오·구글만 제공 |
 | 6. 탈퇴 처리 | **개발하지 않음**(시연에 쓰이지 않음, 2026-11-08) |
 | 7. 도메인 오류 코드 | #25의 `ErrorCode` 구조로 해결 |
 
@@ -162,7 +162,6 @@ ALTER TABLE comments
 
 - 관계 유예 종료 후 공동 장소를 각자의 개인 사본으로 이전하는 처리(#41).
 - 공유·삭제가 일어날 때 활동 기록·알림을 남기는 연결(`course`에서 `ActivityRecorder` 호출, 재원 영역): 시연 전에 코스 공유·공유 취소·삭제를 연결한다. 코스 변경이 성공한 경우에만 기록한다.
-- 이메일 회원가입·로그인(재원, 시연 전).
 - 업로드 한도 설정(파일당 5MB, 요청 전체 6MB, 재원 영역), 토큰 유효 시간 정책 확정. `.env.example`의 환경변수 항목은 #84에서 추가했다.
 - 서버 API를 거친 AI 전체 흐름·스크린샷 인식 품질 확인(AI 서버 직접 호출은 11/11 확인), FCM 실제 전송(후속).
 - 보관함에 AI 카테고리 코드(`categoryCode`)를 저장할지는 보류했다. 지금은 카카오 `categoryGroupCode`를 추천 요청 때 AI 코드로 변환하고, 매핑이 안 되는 값은 AI가 추론한다. 저장하려면 인식·직접 검색에서 값을 어떻게 채울지와 기존 보관함의 빈 값 처리를 먼저 맞춘 뒤 스키마 변경을 검토한다.
@@ -201,9 +200,8 @@ ALTER TABLE comments
 | `id` | BIGINT PK | `IDENTITY` |
 | `name` | VARCHAR, NOT NULL | 소셜 프로필 이름 또는 직접 입력 |
 | `email` | VARCHAR, NULL 허용 | 소셜 제공자가 이메일을 주지 않을 수 있음 |
-| `auth_provider` | ENUM(STRING): `KAKAO`, `GOOGLE` (+ 이메일 가입 확정 시 `EMAIL`) | §3.1에서 범위 확정 |
+| `auth_provider` | ENUM(STRING): `KAKAO`, `GOOGLE` | §3.1에서 범위 확정 |
 | `provider_user_id` | VARCHAR, NOT NULL | 제공자 쪽 사용자 식별자 |
-| `password_hash` | VARCHAR, NULL | 이메일 가입을 하기로 확정한 경우에만 |
 | `created_at`, `updated_at` | `BaseEntity` | |
 
 - 유니크: (`auth_provider`, `provider_user_id`)
